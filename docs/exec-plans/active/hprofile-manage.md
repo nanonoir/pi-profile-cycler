@@ -91,7 +91,7 @@ Renaming and reordering profiles, editing agent Markdown, CLI subcommands, neste
 
 ## Sequence
 
-- [ ] Phase 1 — Schema and routing: optional roles, `default`, optional `main`; reserve `manage`; precedence in `routeSpawn` and parent selection; preflight and `status` show default/native sources. Tests for precedence, old configs still valid and invalid profiles without `main`/`default`.
+- [x] Phase 1 — Schema and routing: optional roles, `default`, optional `main`; reserve `manage`; precedence in `routeSpawn` and parent selection; preflight and `status` show default/native sources. Tests for precedence, old configs still valid and invalid profiles without `main`/`default`.
 - [ ] Phase 2 — Discovery: read-only module for user and trusted project agents, mirroring mavam, with tests against temporary directories (override, untrusted project, invalid frontmatter, agent dir equal to project `.pi`).
 - [ ] Phase 3 — Profile editing core: pure operations (create, delete with replacement, set/remove default, main and role) plus serializer and atomic writer with backup. Tests: round trip, validation before writing, interrupted write leaves the old file, no other files touched.
 - [ ] Phase 4a — Searchable model picker: pure filtering/row formatting tested against `fuzzyFilter`; component tested by feeding key input (type `opu`, arrows, Enter, Esc); fallback to plain `select` tested.
@@ -116,4 +116,4 @@ Renaming and reordering profiles, editing agent Markdown, CLI subcommands, neste
 
 ## Progress and evidence
 
-_Not started._
+- Phase 1 (`2c1b989`): optional `main`/`default`/`agents`, any role name, `manage` reserved, `parentRoute()` (main else default), `routeSpawn` fallback to default, preflight checks default, status shows sources. `npm test` 41/41, typecheck clean. Example and root configs validate unchanged. Note: an explicit request model without explicit thinking still takes thinking from the role/default route (pre-existing explicit-wins behavior).
