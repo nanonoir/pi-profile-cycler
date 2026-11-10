@@ -84,4 +84,37 @@ Make the profile cycler route the subagents of [`pi-subagents`](https://www.npmj
 - [x] Phase 2 — `subagent` routing
 - [x] Phase 3 — discovery
 - [x] Phase 4 — deps, docs, version
-- [ ] Phase 5 — review and closure
+- [x] Phase 5 — review and closure
+
+## Implementation Outcome
+
+Closed 2026-11-10. Commits `849fd2f`, `fab71af`, `b4104d1`, `00d7e5d` and `632308f` are local on `main`. Nothing was pushed and `v2.0.0` is not tagged.
+
+### Implemented
+
+- **Child guard** (`849fd2f`): the extension registers nothing when `PI_SUBAGENT_CHILD=1`. Async pi-subagents children keep their own model instead of the profile's parent model.
+- **Routing** (`fab71af`): `src/routing.ts` routes the pi-subagents `subagent` tool. Direct launches route the top-level `model`; `tasks[]`, `chain[]` and `chain[].parallel[]` are routed when `workflow-scripts` is disabled. Routes are injected as `provider/id:thinking`; an explicit `model` wins. Workflows, `action`s and malformed input pass through. The mavam hook and tests were removed.
+- **Discovery** (`b4104d1`): `src/discovery.ts` mirrors pi-subagents 0.87.0 agent discovery for `/hprofile manage`: builtin, user and trusted project agents, with aliases, package-qualified names and external runners.
+- **Review fixes** (`632308f`): external-CLI roles cannot be routed from `manage` (save is refused, and the role is labelled "not routed"); reload warns about configured external-CLI roles; `/hprofile status` warns when builtin agents are not found; `inherit` counts as no explicit model; README, architecture and compatibility wording was corrected.
+- **Release** (`00d7e5d`): version `2.0.0`, package description, README, architecture, compatibility, manual checklist and PRD changelog. The schema stays `version: 2` and `ENTRY_TYPE` is unchanged.
+
+Main areas: `src/` (`index.ts`, `routing.ts`, `discovery.ts`, `manage.ts`), `tests/`, `package.json`, `README.md`, `docs/`.
+
+### Deviations from Design
+
+- **No pi-subagents dependency.** The plan allowed one only if a test imported it. No test does, so routing and discovery tests use fixtures that cite the mirrored source lines. Discovery parity with the installed 0.87.0 `discoverAgents` was checked by hand on 2026-11-10; that check is not part of `npm test`.
+- **`jiti` and `pi-agents` dev dependencies removed** together with the mavam parity test.
+- **Unresolved or ambiguous role names** are looked up verbatim as the profile key, so a configured `agents.<name>` route still applies. This was an implementer addition, reviewed.
+
+### Validation
+
+- `npm test` at closure: 109 tests, 108 pass, 0 fail, 1 skipped (the symlink discovery test, skipped on Windows).
+- `npm run typecheck` (`tsc --noEmit`): clean.
+- Independent review: PASS WITH FINDINGS, no blocking. All should-fix and nit findings were fixed in `632308f`.
+- Not validated: real Pi and pi-subagents launches, async child behaviour, authenticated providers, Windows TUI. These remain open in [manual-testing.md](../../manual-testing.md) and [TD-002](../tech-debt-tracker.md).
+
+### Follow-up
+
+- Real Pi smoke against pi-subagents 0.87.0 (TD-002).
+- Tag `v2.0.0` and push: waiting for owner approval.
+- Technical debt recorded in [tech-debt-tracker.md](../tech-debt-tracker.md): TD-002, TD-004, TD-005 (discovery gaps), TD-006 (workflow, reply-block and RPC launches not routed), TD-007 (alias-only external roles not labelled in manage), TD-008 (preflight does not check `modelScope` or `maxThinking`).
