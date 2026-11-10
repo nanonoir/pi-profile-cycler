@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerCycler } from "../src/index.ts";
 import { parseConfig, type ThinkingLevel } from "../src/config.ts";
+import type { Discovery } from "../src/discovery.ts";
+import { serializeConfig } from "../src/store.ts";
 import type { RegisteredModel } from "../src/switching.ts";
 
 export interface FakeEvent { toolName?: string; input?: Record<string, unknown> }
@@ -26,16 +28,36 @@ export function harness() {
   let answer: string | undefined;
   let gate: Promise<void> | undefined;
   let stale = false;
+  let hasUI = true;
+  let failWrite = false;
+  let discovery: Discovery = { roles: [], diagnostics: [] };
+  const script: unknown[] = [];
+  const writes: string[] = [];
   const violations: string[] = [];
   /** Models the SDK invalidating a replaced runner: any later API/context use is recorded and throws. */
   const live = (what: string) => { if (stale) { violations.push(what); throw new Error(`stale extension API used: ${what}`); } };
   const ctx = {
     get model() { live("ctx.model"); return model; },
     isIdle: () => { live("ctx.isIdle"); return idle; },
-    hasUI: true,
+    get hasUI() { return hasUI; },
+    cwd: "/project",
+    isProjectTrusted: () => true,
     sessionManager: { getBranch: () => { live("getBranch"); return branch; } },
     modelRegistry: { find: (provider: string, id: string) => models.find(m => m.provider === provider && m.id === id), getAvailable: () => models },
-    ui: { notify: (text: string) => { live("notify"); notifications.push(text); }, setStatus: (_key: string, text: string) => { live("setStatus"); statuses.push(text); }, select: async () => answer },
+    ui: {
+      notify: (text: string) => { live("notify"); notifications.push(text); },
+      setStatus: (_key: string, text: string) => { live("setStatus"); statuses.push(text); },
+      select: async (title: string, options: string[]) => {
+        if (!script.length) return answer;
+        const next = script.shift() as string | undefined;
+        if (next === undefined) return undefined;
+        const found = options.find(option => option === next) ?? options.find(option => option.startsWith(next));
+        if (!found) throw new Error(`scripted select "${next}" not in [${options.join(" | ")}] (${title})`);
+        return found;
+      },
+      input: async () => script.shift() as string | undefined,
+      confirm: async () => script.shift() === true,
+    },
   } as unknown as ExtensionContext;
   const api = {
     on: (name: string, handler: Handler) => handlers.set(name, handler),
@@ -57,9 +79,27 @@ export function harness() {
     setThinkingLevel: (next: ThinkingLevel) => { live("setThinkingLevel"); thinking = clamp && next === "low" ? "medium" : next; },
     appendEntry: (customType: string, data: unknown) => { live("appendEntry"); branch.push({ type: "custom", customType, data }); },
   } as unknown as ExtensionAPI;
-  registerCycler(api, { readConfig: () => text });
+  registerCycler(api, {
+    readConfig: () => text,
+    writeConfig: next => { if (failWrite) throw new Error("disk full"); text = serializeConfig(next); writes.push(text); },
+    // Scripted answer is a `provider/id`; undefined cancels.
+    pickModel: async (_ctx, options) => {
+      const next = script.shift() as string | undefined;
+      if (next === undefined) return undefined;
+      const found = options.models.find(m => `${m.provider}/${m.id}` === next);
+      if (!found) throw new Error(`scripted model ${next} not offered (${options.title})`);
+      return found;
+    },
+    discoverRoles: () => discovery,
+  });
   return {
-    api, ctx, config, violations,
+    api, ctx, config, violations, writes, text: () => text,
+    /** Queue answers consumed in order by select (label or label prefix), input, confirm (true/false) and the model picker (provider/id); `undefined` = Esc. */
+    script: (...answers: unknown[]) => { script.push(...answers); },
+    scriptLeft: () => script.length,
+    setDiscovery: (value: Discovery) => { discovery = value; },
+    setUI: (value: boolean) => { hasUI = value; },
+    failWrite: (value: boolean) => { failWrite = value; },
     invalidate: () => { stale = true; }, models, notifications, statuses, calls,
     emit: async (name: string, event: FakeEvent = {}) => handlers.get(name)?.(event, ctx),
     command: async (args: string) => command!(args, ctx as ExtensionCommandContext),

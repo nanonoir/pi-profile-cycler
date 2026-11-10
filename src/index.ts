@@ -2,14 +2,22 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { parentRoute, parseConfig, type Config } from "./config.ts";
+import { discoverRoles, type Discovery } from "./discovery.ts";
+import { manage } from "./manage.ts";
+import { pickModel, type PickModelOptions } from "./model-picker.ts";
 import { routeSpawn } from "./routing.ts";
 import { ENTRY_TYPE, restoreSelection } from "./state.ts";
-import { message, preflight, switchProfile } from "./switching.ts";
+import { writeConfig } from "./store.ts";
+import { message, preflight, switchProfile, type RegisteredModel } from "./switching.ts";
 
 export const PROFILE_SHORTCUT = "alt+m";
 
 export interface CyclerOptions {
   readConfig?: () => string;
+  /** Persists the configuration for `/hprofile manage`; defaults to the file `readConfig` reads. */
+  writeConfig?: (config: Config) => void;
+  pickModel?: (ctx: ExtensionContext, options: PickModelOptions) => Promise<RegisteredModel | undefined>;
+  discoverRoles?: (ctx: ExtensionContext) => Discovery;
 }
 
 interface ActivateOptions {
@@ -39,7 +47,9 @@ interface ActivateOptions {
  * validated config; the file is read only at session_start and on explicit reload.
  */
 export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): void {
-  const readConfig = options.readConfig ?? (() => readFileSync(join(getAgentDir(), "profile-cycler.json"), "utf8"));
+  const configPath = () => join(getAgentDir(), "profile-cycler.json");
+  const readConfig = options.readConfig ?? (() => readFileSync(configPath(), "utf8"));
+  const save = options.writeConfig ?? ((next: Config) => writeConfig(configPath(), next));
   let config: Config | undefined;
   let selected: string | undefined;
   let applying = false;
@@ -167,34 +177,47 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
     await activate(config.order[(index + 1) % config.order.length], ctx);
   }
 
+  async function reload(ctx: ExtensionContext): Promise<void> {
+    if (!ctx.isIdle() || applying) throw new Error("Reload not applied: parent busy; retry when idle");
+    const candidate = parseConfig(readConfig());
+    for (const profile of Object.values(candidate.profiles)) preflight(profile, ctx);
+    const previous = config;
+    config = candidate;
+    if (selected && !Object.hasOwn(candidate.profiles, selected)) {
+      selected = undefined;
+      cancelPending(ctx, "selected profile removed by reload");
+      status(ctx);
+      ctx.ui.notify("Selected profile removed; choose /hprofile <name>. Direct spawns blocked until selection.", "warning");
+    } else if (selected) {
+      // Every successful selected-route activation must be pinned on this branch.
+      // The commit checks branch history, so existing selections are not duplicated.
+      if (!await activate(selected, ctx, { persist: true, keepPending: true })) { config = previous; return; }
+      if (pending && !Object.hasOwn(candidate.profiles, pending)) cancelPending(ctx, "profile removed by reload");
+    } else ctx.ui.notify("Configuration reloaded; choose /hprofile <name>", "info");
+  }
+
   // Not alt+p: on Windows Pi reserves it for cycling to the previous model and skips extension shortcuts.
   pi.registerShortcut(PROFILE_SHORTCUT, {
     description: "Cycle model routing profile",
     handler: async ctx => { try { await next(ctx); } catch (error) { ctx.ui.notify(message(error), "error"); } },
   });
   pi.registerCommand("hprofile", {
-    description: "Select profile, next, status, or reload",
+    description: "Select profile, next, status, reload, or manage (create/edit/delete profiles)",
     handler: async (args, ctx) => {
       try {
         const choice = args.trim();
-        if (choice === "reload") {
-          if (!ctx.isIdle() || applying) throw new Error("Reload not applied: parent busy; retry when idle");
-          const candidate = parseConfig(readConfig());
-          for (const profile of Object.values(candidate.profiles)) preflight(profile, ctx);
-          const previous = config;
-          config = candidate;
-          if (selected && !Object.hasOwn(candidate.profiles, selected)) {
-            selected = undefined;
-            cancelPending(ctx, "selected profile removed by reload");
-            status(ctx);
-            ctx.ui.notify("Selected profile removed; choose /hprofile <name>. Direct spawns blocked until selection.", "warning");
-          } else if (selected) {
-            // Every successful selected-route activation must be pinned on this branch.
-            // The commit checks branch history, so existing selections are not duplicated.
-            if (!await activate(selected, ctx, { persist: true, keepPending: true })) { config = previous; return; }
-            if (pending && !Object.hasOwn(candidate.profiles, pending)) cancelPending(ctx, "profile removed by reload");
-          } else ctx.ui.notify("Configuration reloaded; choose /hprofile <name>", "info");
-          return;
+        if (choice === "reload") return await reload(ctx);
+        if (choice === "manage") {
+          if (!ctx.hasUI) { ctx.ui.notify("/hprofile manage needs the interactive TUI", "warning"); return; }
+          return await manage(ctx, {
+            load: () => parseConfig(readConfig()),
+            write: save,
+            reload: () => reload(ctx),
+            activate: name => activate(name, ctx),
+            selected: () => selected,
+            pick: options.pickModel ?? pickModel,
+            discover: () => options.discoverRoles?.(ctx) ?? discoverRoles(ctx.cwd, ctx.isProjectTrusted(), getAgentDir()),
+          });
         }
         if (choice === "status") {
           const actual = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "none";
