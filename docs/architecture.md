@@ -25,6 +25,8 @@ A profile may define `default`, `main` and any `agents` roles; it must define `m
 
 ## Profile editor
 
+First run: when `profile-cycler.json` does not exist, the extension routes nothing (direct spawns pass through untouched), the status reads `profile: none (/hprofile manage)`, and `manage` offers only **New profile**; saving it creates the file (the compare-before-write check then requires the file to still be absent) and activates that profile. Any other read or validation error still fails closed.
+
 `/hprofile manage` edits an in-memory draft of route changes and writes them only on Save; Delete and Set as default are profile-level actions that write after an explicit confirmation. Before writing it re-reads the file and refuses if it differs from the version the menu was built from, validates the schema and preflights the changed routes against Pi's registry and supported thinking; reload preflights every profile and names the offending one. If re-activating the selected profile fails, the file is saved but reported as not applied. Saving goes through the same reload path as `/hprofile reload`; if Pi is busy the file is saved and the user is told to reload. The menu re-reads the file each pass so a saved-but-unapplied edit is not overwritten by stale state. Model choices come from `modelRegistry.getAvailable()`, thinking from `getSupportedThinkingLevels`. Formatting of a hand-edited file is not preserved after a Save.
 
 ## Activation transaction

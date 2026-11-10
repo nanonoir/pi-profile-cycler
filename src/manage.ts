@@ -1,7 +1,7 @@
 /** `/hprofile manage`: dialog flow over the pure editing core. Edits stay in a draft until Save; the file is the source of truth. */
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { NAME, THINKING_LEVELS, type Config, type Profile, type Route } from "./config.ts";
+import { NAME, THINKING_LEVELS, validateConfig, type Config, type Profile, type Route } from "./config.ts";
 import type { Discovery } from "./discovery.ts";
 import { createProfile, deleteProfile, setDefaultProfile, setRoute, type RouteTarget } from "./editing.ts";
 import { modelId, type PickModelOptions } from "./model-picker.ts";
@@ -9,8 +9,8 @@ import { serializeConfig } from "./store.ts";
 import { message, resolveRoute, type RegisteredModel } from "./switching.ts";
 
 export interface ManageDeps {
-  /** Reads and validates the configuration file. */
-  load(): Config;
+  /** Reads and validates the configuration file; undefined when it does not exist yet. */
+  load(): Config | undefined;
   /** Validates and atomically writes the configuration file. */
   write(config: Config): void;
   /** Existing reload path; throws when the parent is busy, the file is rejected or the selected profile cannot be re-activated. */
@@ -28,8 +28,8 @@ const fmt = (route: Route) => `${route.model} (${route.thinking})`;
 type Outcome = "failed" | "saved" | "applied";
 
 /** Routes of `name` that are new or modified relative to `base`, labelled like preflight errors. */
-function changedRoutes(base: Config, next: Config, name: string): Array<[string, Route]> {
-  const before = base.profiles[name];
+function changedRoutes(base: Config | undefined, next: Config, name: string): Array<[string, Route]> {
+  const before = base?.profiles[name];
   const after = next.profiles[name];
   const routes: Array<[string, Route | undefined, Route | undefined]> = [
     ["default", before?.default, after.default],
@@ -40,12 +40,13 @@ function changedRoutes(base: Config, next: Config, name: string): Array<[string,
 }
 
 /** Persist `next`, then apply it through the reload path. Nothing is written when the file changed, validation or preflight fails. */
-async function commit(ctx: ExtensionContext, deps: ManageDeps, base: Config, next: Config, edited?: string): Promise<Outcome> {
+async function commit(ctx: ExtensionContext, deps: ManageDeps, base: Config | undefined, next: Config, edited?: string): Promise<Outcome> {
   try {
     if (edited) for (const [label, route] of changedRoutes(base, next, edited)) {
       try { resolveRoute(route, ctx); } catch (error) { throw new Error(`${label}: ${message(error)}`); }
     }
-    if (serializeConfig(deps.load()) !== serializeConfig(base)) throw new Error("profile-cycler.json changed on disk; reopen /hprofile manage");
+    const onDisk = deps.load();
+    if ((onDisk && serializeConfig(onDisk)) !== (base && serializeConfig(base))) throw new Error("profile-cycler.json changed on disk; reopen /hprofile manage");
     deps.write(next);
   } catch (error) { ctx.ui.notify(`Not saved: ${message(error)}`, "error"); return "failed"; }
   try { await deps.reload(); ctx.ui.notify("Configuration saved", "info"); return "applied"; }
@@ -91,8 +92,8 @@ async function editRoute(ctx: ExtensionContext, deps: ManageDeps, draft: Config,
   return draft;
 }
 
-/** Returns once the draft is saved (or saved but not applied), or abandoned. */
-async function editProfile(ctx: ExtensionContext, deps: ManageDeps, base: Config, name: string, start = base): Promise<void> {
+/** Returns once the draft is saved (or saved but not applied), or abandoned. Without `base` the draft becomes the first configuration. */
+async function editProfile(ctx: ExtensionContext, deps: ManageDeps, base: Config | undefined, name: string, start: Config): Promise<void> {
   const discovery = deps.discover();
   const valid = discovery.roles.filter(role => NAME.test(role.name));
   const unlisted = discovery.diagnostics.length + discovery.roles.length - valid.length;
@@ -118,7 +119,10 @@ async function editProfile(ctx: ExtensionContext, deps: ManageDeps, base: Config
     const answer = await ctx.ui.select(`Edit ${name}${dirty() ? " (unsaved changes)" : ""}`, options);
     if (answer === "Save") {
       if (!dirty()) return;
-      if (await commit(ctx, deps, base, draft, name) !== "failed") return;
+      const outcome = await commit(ctx, deps, base, draft, name);
+      // The first profile has nothing selected yet: activate it so it is ready to use.
+      if (outcome === "applied" && !base) await deps.activate(name);
+      if (outcome !== "failed") return;
     } else if (answer === undefined || answer === "Discard") {
       if (!dirty() || await ctx.ui.confirm("Discard changes", `Discard unsaved changes to ${name}?`)) return;
     } else {
@@ -128,18 +132,23 @@ async function editProfile(ctx: ExtensionContext, deps: ManageDeps, base: Config
   }
 }
 
-async function createFlow(ctx: ExtensionContext, deps: ManageDeps, config: Config): Promise<void> {
+/** A brand-new configuration holding only `name`. */
+const firstConfig = (name: string, route: Route): Config =>
+  validateConfig({ version: 2, defaultProfile: name, order: [name], profiles: { [name]: { default: route, agents: {} } } });
+
+async function createFlow(ctx: ExtensionContext, deps: ManageDeps, config: Config | undefined): Promise<void> {
+  const create = (name: string, route: Route) => config ? createProfile(config, name, route) : firstConfig(name, route);
   const probe: Route = { model: "provider/model", thinking: "off" };
   let name: string | undefined;
   for (;;) {
     const input = await ctx.ui.input("New profile name", "lowercase letters, digits, - or _");
     if (input === undefined) return;
-    try { createProfile(config, input.trim(), probe); name = input.trim(); break; }
+    try { create(input.trim(), probe); name = input.trim(); break; }
     catch (error) { ctx.ui.notify(`Invalid name: ${message(error)}`, "error"); }
   }
   const route = await chooseRoute(ctx, deps, "Default");
   if (!route) return;
-  await editProfile(ctx, deps, config, name, createProfile(config, name, route));
+  await editProfile(ctx, deps, config, name, create(name, route));
 }
 
 async function deleteFlow(ctx: ExtensionContext, deps: ManageDeps, config: Config, name: string): Promise<void> {
@@ -171,9 +180,14 @@ async function setDefaultFlow(ctx: ExtensionContext, deps: ManageDeps, config: C
 
 export async function manage(ctx: ExtensionContext, deps: ManageDeps): Promise<void> {
   for (;;) {
-    let config: Config;
+    let config: Config | undefined;
     try { config = deps.load(); }
     catch (error) { ctx.ui.notify(`Cannot manage profiles: ${message(error)}`, "error"); return; }
+    if (!config) {
+      if (await ctx.ui.select("Manage profiles: no profiles yet", [NEW, DONE]) !== NEW) return;
+      await createFlow(ctx, deps, undefined);
+      continue;
+    }
     const active = deps.selected();
     const labels = new Map(config.order.map(key => {
       const tags = [key === config.defaultProfile ? "default" : "", key === active ? "active" : ""].filter(Boolean).join(", ");
@@ -188,7 +202,7 @@ export async function manage(ctx: ExtensionContext, deps: ManageDeps): Promise<v
     const action = await ctx.ui.select(`Profile ${name}`, actions);
     try {
       if (action === "Activate") await deps.activate(name);
-      else if (action === "Edit") await editProfile(ctx, deps, config, name);
+      else if (action === "Edit") await editProfile(ctx, deps, config, name, config);
       else if (action === "Delete") await deleteFlow(ctx, deps, config, name);
       else if (action === "Set as default") await setDefaultFlow(ctx, deps, config, name);
     } catch (error) { ctx.ui.notify(`Profile error: ${message(error)}`, "error"); }

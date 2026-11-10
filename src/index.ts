@@ -50,7 +50,14 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
   const configPath = () => join(getAgentDir(), "profile-cycler.json");
   const readConfig = options.readConfig ?? (() => readFileSync(configPath(), "utf8"));
   const save = options.writeConfig ?? ((next: Config) => writeConfig(configPath(), next));
+  /** Undefined when profile-cycler.json does not exist yet; other read or validation errors propagate. */
+  const loadConfig = (): Config | undefined => {
+    try { return parseConfig(readConfig()); }
+    catch (error) { if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return undefined; throw error; }
+  };
   let config: Config | undefined;
+  /** No configuration file at all: nothing is routed until the first profile is created. */
+  let missing = false;
   let selected: string | undefined;
   let applying = false;
   let inflight: Promise<unknown> | undefined;
@@ -65,7 +72,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
   pi.on("model_select", async event => { observedModel = event.model; });
 
   function status(ctx: ExtensionContext): void {
-    ctx.ui.setStatus("hprofile", `profile: ${selected ?? "unavailable"}${pending ? ` (pending: ${pending})` : ""}`);
+    ctx.ui.setStatus("hprofile", missing ? "profile: none (/hprofile manage)" : `profile: ${selected ?? "unavailable"}${pending ? ` (pending: ${pending})` : ""}`);
   }
 
   /** `unroute`: the profile was routed early, so a failed reconciliation must not leave it active. */
@@ -157,11 +164,19 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
     pending = undefined;
     pendingPersist = true;
     pendingRouted = false;
-    if (reread) config = undefined;
+    if (reread) { config = undefined; missing = false; }
     status(ctx);
     try {
-      if (reread) config = parseConfig(readConfig());
-      if (!config) throw new Error("No valid configuration; use /hprofile reload");
+      if (reread) {
+        config = loadConfig();
+        missing = !config;
+        if (missing) {
+          status(ctx);
+          ctx.ui.notify("Profile cycler: no profiles yet. Run /hprofile manage to create your first one.", "info");
+          return;
+        }
+      }
+      if (!config) throw new Error(missing ? "No profiles yet; run /hprofile manage" : "No valid configuration; use /hprofile reload");
       const saved = restoreSelection(ctx.sessionManager.getBranch());
       const name = saved ?? config.defaultProfile;
       if (!Object.hasOwn(config.profiles, name)) throw new Error(`Saved profile ${name} no longer exists; choose /hprofile <name>`);
@@ -171,7 +186,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
   }
 
   async function next(ctx: ExtensionContext): Promise<void> {
-    if (!config) throw new Error("No valid configuration; use /hprofile reload");
+    if (!config) throw new Error(missing ? "No profiles yet; run /hprofile manage" : "No valid configuration; use /hprofile reload");
     const current = pending ?? selected;
     const index = current ? config.order.indexOf(current) : -1;
     await activate(config.order[(index + 1) % config.order.length], ctx);
@@ -180,12 +195,14 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
   /** False when the selected profile could not be re-activated (activate already notified, config reverted). */
   async function reload(ctx: ExtensionContext): Promise<boolean> {
     if (!ctx.isIdle() || applying) throw new Error("Reload not applied: parent busy; retry when idle");
-    const candidate = parseConfig(readConfig());
+    const candidate = loadConfig();
+    if (!candidate) throw new Error("profile-cycler.json not found; create a profile with /hprofile manage");
     for (const [name, profile] of Object.entries(candidate.profiles)) {
       try { preflight(profile, ctx); } catch (error) { throw new Error(`profiles.${name}: ${message(error)}`); }
     }
     const previous = config;
     config = candidate;
+    missing = false;
     if (selected && !Object.hasOwn(candidate.profiles, selected)) {
       selected = undefined;
       cancelPending(ctx, "selected profile removed by reload");
@@ -217,7 +234,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
         if (choice === "manage") {
           if (!ctx.hasUI) { ctx.ui.notify("/hprofile manage needs the interactive TUI", "warning"); return; }
           return await manage(ctx, {
-            load: () => parseConfig(readConfig()),
+            load: loadConfig,
             write: save,
             reload: async () => { if (!await reload(ctx)) throw new Error("the selected profile could not be re-activated"); },
             activate: name => activate(name, ctx),
@@ -239,7 +256,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
         }
         if (choice === "next") return await next(ctx);
         if (choice) { await activate(choice, ctx); return; }
-        if (!config) throw new Error("No valid configuration; use /hprofile reload");
+        if (!config) throw new Error(missing ? "No profiles yet; run /hprofile manage" : "No valid configuration; use /hprofile reload");
         if (!ctx.hasUI) { ctx.ui.notify(`Profiles: ${config.order.join(", ")}; choose /hprofile <name>`, "info"); return; }
         const answer = await ctx.ui.select("Model routing profile", config.order);
         if (answer) await activate(answer, ctx);
@@ -271,7 +288,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
   pi.on("agent_settled", async (_event, ctx) => { await applyPending(ctx, false); });
 
   pi.on("tool_call", async (event, ctx) => {
-    if (event.toolName !== "agent_spawn") return;
+    if (event.toolName !== "agent_spawn" || missing) return; // no profiles yet: mavam routes natively
     try {
       if (applying) throw new Error("Profile switch in progress; retry spawn after it completes");
       if (!config || !selected) throw new Error("No activated routing profile; choose /hprofile <name>");

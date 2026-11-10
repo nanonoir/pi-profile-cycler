@@ -40,17 +40,36 @@ Alt+M   balanced  →  claude  →  codex  →  balanced …
 
 Requires Pi 1.5.x with `mavam/pi-agents`.
 
+**1. Install**
+
 ```sh
 pi install git:github.com/nanonoir/pi-profile-cycler
 ```
 
-Start from the example profiles (skip this if you already have a `profile-cycler.json`):
+**2. Create your first profile**: open Pi and run `/hprofile manage` → **+ New profile** → pick a default model → **Save**. It is activated right away.
+
+**3. Switch**: add more profiles the same way and press `Alt+M`.
+
+Until you create a profile nothing changes: subagents keep mavam's own routing.
+
+<details>
+<summary><b>Or start from the example profiles</b></summary>
+
+Skip this if you already have a `profile-cycler.json`. Then adjust the models in `/hprofile manage`.
+
+macOS / Linux:
 
 ```sh
-curl -o ~/.pi/agent/profile-cycler.json https://raw.githubusercontent.com/nanonoir/pi-profile-cycler/main/examples/profile-cycler.json
+curl -fsSL -o ~/.pi/agent/profile-cycler.json https://raw.githubusercontent.com/nanonoir/pi-profile-cycler/main/examples/profile-cycler.json
 ```
 
-Open Pi, run `/hprofile manage` and adjust the models to the ones you have (`pi --list-models`). Done: press `Alt+M`.
+Windows (PowerShell):
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/nanonoir/pi-profile-cycler/main/examples/profile-cycler.json -OutFile "$HOME\.pi\agent\profile-cycler.json"
+```
+
+</details>
 
 ## ⌨️ Commands
 

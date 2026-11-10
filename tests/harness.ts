@@ -10,7 +10,8 @@ export interface FakeEvent { toolName?: string; input?: Record<string, unknown> 
 type Handler = (event: FakeEvent, ctx: ExtensionContext) => Promise<unknown>;
 /** `realStore`: no injected read/write, so the extension uses `$PI_CODING_AGENT_DIR/profile-cycler.json`. */
 export function harness(opts: { realStore?: boolean } = {}) {
-  let text = readFileSync(new URL("../examples/profile-cycler.json", import.meta.url), "utf8");
+  /** Contents of the injected config file; undefined models a missing file (ENOENT). */
+  let text: string | undefined = readFileSync(new URL("../examples/profile-cycler.json", import.meta.url), "utf8");
   const config = parseConfig(text);
   const ids = [...new Set(Object.values(config.profiles).flatMap(p => [p.main!.model, ...Object.values(p.agents).map(r => r.model)]))];
   const models = ids.map(id => ({ provider: id.slice(0, id.indexOf("/")), id: id.slice(id.indexOf("/") + 1), reasoning: true }) as RegisteredModel);
@@ -86,7 +87,10 @@ export function harness(opts: { realStore?: boolean } = {}) {
   } as unknown as ExtensionAPI;
   registerCycler(api, {
     ...(opts.realStore ? {} : {
-      readConfig: () => text,
+      readConfig: () => {
+        if (text === undefined) throw Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" });
+        return text;
+      },
       writeConfig: (next: Config) => { if (failWrite) throw new Error("disk full"); text = serializeConfig(next); writes.push(text); },
     }),
     // Scripted answer is a `provider/id`; undefined cancels.
@@ -100,7 +104,7 @@ export function harness(opts: { realStore?: boolean } = {}) {
     discoverRoles: () => discovery,
   });
   return {
-    api, ctx, config, violations, writes, offered, text: () => text,
+    api, ctx, config, violations, writes, offered, text: () => text!, exists: () => text !== undefined,
     /** Queue answers consumed in order by select (label or label prefix), input, confirm (true/false) and the model picker (provider/id); `undefined` = Esc. */
     script: (...answers: unknown[]) => { script.push(...answers); },
     scriptLeft: () => script.length,
@@ -115,7 +119,7 @@ export function harness(opts: { realStore?: boolean } = {}) {
     setIdle: (value: boolean) => { idle = value; },
     setBranch: (value: unknown[]) => { branch = value; },
     branch: () => branch,
-    setText: (value: string) => { text = value; },
+    setText: (value: string | undefined) => { text = value; },
     setAnswer: (value: string | undefined) => { answer = value; },
     failModel: (id: string | undefined) => { failModel = id; },
     setClamp: (value: boolean) => { clamp = value; },

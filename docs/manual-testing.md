@@ -22,6 +22,7 @@ Record Pi and mavam versions, OS/terminal, registered model IDs, authentication 
 | Two windows | Different selections remain isolated. |
 | `/resume`, `/reload`, `/fork`, `/tree` | Active branch selection restored; no duplicate custom entries from restoration; status never claims a failed activation. |
 | Manual `/model` | Status distinguishes real parent route from selected future-spawn profile. |
+| First run with no `profile-cycler.json` | Status `profile: none (/hprofile manage)`; subagents spawn with mavam's own routing; `manage` offers only New profile; Save creates the file and activates it. |
 | `/hprofile manage` → New profile with only a default | Fuzzy search (`opu`) narrows models; only supported thinking levels offered; Save writes `profile-cycler.json` + `.bak`; profile appears in Alt+M cycle. |
 | Edit orchestrator and one role, Save | Status shows `[from main]`/role routes; next direct spawn of that role uses it; other roles use default. |
 | Edit while parent generates, Save | File saved, notice to run `/hprofile reload`; nothing applied mid-run. |

@@ -23,6 +23,48 @@ test("create a profile with only a default and save it", async () => {
   assert.ok(h.notifications.some(text => /saved/.test(text)));
 });
 
+test("first run without a config file: native routing, then manage creates and activates the first profile", async () => {
+  const h = harness();
+  h.setText(undefined);
+  await h.emit("session_start");
+  assert.match(h.statuses.at(-1)!, /profile: none \(\/hprofile manage\)/);
+  assert.match(h.notifications.join("\n"), /no profiles yet/);
+  assert.ok(!h.notifications.some(text => /Profile initialization/.test(text)));
+  // Without a config nothing is blocked or injected: mavam routes natively.
+  const input = { agents: [{ name: "implementer", job: "x" }] };
+  assert.equal(await h.emit("tool_call", { toolName: "agent_spawn", input }), undefined);
+  assert.deepEqual(input.agents, [{ name: "implementer", job: "x" }]);
+  await h.command("next");
+  assert.match(h.notifications.at(-1)!, /No profiles yet; run \/hprofile manage/);
+
+  h.script("+ New profile", "fast", OPUS, "medium", "Save", "Done");
+  await h.command("manage");
+  assert.equal(h.scriptLeft(), 0);
+  assert.equal(h.offered[0].title, "Manage profiles: no profiles yet");
+  assert.deepEqual(h.offered[0].options, ["+ New profile", "Done"]);
+  assert.deepEqual(JSON.parse(h.text()), { version: 2, defaultProfile: "fast", order: ["fast"], profiles: { fast: { default: { model: OPUS, thinking: "medium" } } } });
+  assert.match(h.statuses.at(-1)!, /^profile: fast$/);
+  assert.equal(`${h.model().provider}/${h.model().id}`, OPUS);
+  assert.equal(await h.emit("tool_call", { toolName: "agent_spawn", input }), undefined);
+  assert.deepEqual(input.agents, [{ name: "implementer", job: "x", model: OPUS, thinking: "medium" }]);
+});
+
+test("first run: Done or Esc writes nothing; a file created meanwhile is not overwritten", async () => {
+  const h = harness();
+  const original = h.text();
+  h.setText(undefined);
+  await h.emit("session_start");
+  h.script("Done");
+  await h.command("manage");
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.exists(), false);
+  h.script("+ New profile", "fast", OPUS, "medium", () => h.setText(original), "Save", "Discard", true, "Done");
+  await h.command("manage");
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.text(), original);
+  assert.match(h.notifications.join("\n"), /changed on disk/);
+});
+
 test("invalid or reserved profile names are re-asked; Esc backs out without writing", async () => {
   const h = harness();
   h.script("+ New profile", "manage", "Bad Name", "claude", undefined, "Done");
