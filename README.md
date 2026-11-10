@@ -77,4 +77,4 @@ npm ci && npm test && npm run typecheck
 
 [Architecture](docs/architecture.md) · [Compatibility](docs/compatibility.md) · [Manual testing](docs/manual-testing.md) · [PRD](docs/pi-agents-profile-cycler.md)
 
-<sub>[MIT](LICENSE) © 2026 Nahuel Noir · not an official pi-agents plugin</sub>
+<sub>[MIT](LICENSE) © 2026 Nahuel Nicolas Noir (nanonoir) · not an official pi-agents plugin</sub>
