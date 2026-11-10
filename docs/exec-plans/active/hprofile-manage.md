@@ -77,21 +77,25 @@ Edit <profile>
 ```
 
 - Models come from `ctx.modelRegistry.getAvailable()`; thinking choices from `getSupportedThinkingLevels(model)`. Invalid choices cannot be selected.
+- Navigation everywhere: arrows (or `j`/`k`), Enter to choose, Esc to go back. Verified in Pi 1.5.0 `ExtensionSelectorComponent`; it has no search.
 - Profile names validated as today (lowercase, not `next`/`status`/`reload`/`manage`); new profiles are appended to `order`.
 - Deleting the selected or default profile requires choosing a replacement; deleting the last profile is refused.
-- A custom TUI component (`ctx.ui.custom`) is out of scope for this version.
+- **Model picker with fuzzy search** (owner decision 2026-11-10): typing `opu` narrows the list to Opus models, like Pi's `/model`. Built with `ctx.ui.custom` from public `@earendil-works/pi-tui` exports (`Input`, `SelectList`, `fuzzyFilter`), the same pieces Pi's own `model-selector.js` uses. Rows show `model-id · provider`. All other menus (profile, role, thinking, confirmations) stay on plain `ctx.ui.select`.
+- Fallback: if `ctx.ui.custom` is unavailable or throws, the model picker degrades to plain `select` with models ordered by provider.
+- `@earendil-works/pi-tui` becomes a peer dependency (`^1.5.0`, already a peer of mavam) and a dev dependency for tests.
 - Without UI (`!ctx.hasUI`), `manage` reports that it needs the interactive TUI.
 
 ### Out of scope
 
-Renaming and reordering profiles, editing agent Markdown, CLI subcommands, nested helper routing, custom TUI components.
+Renaming and reordering profiles, editing agent Markdown, CLI subcommands, nested helper routing, custom TUI components other than the model picker (e.g. a table view).
 
 ## Sequence
 
 - [ ] Phase 1 — Schema and routing: optional roles, `default`, optional `main`; reserve `manage`; precedence in `routeSpawn` and parent selection; preflight and `status` show default/native sources. Tests for precedence, old configs still valid and invalid profiles without `main`/`default`.
 - [ ] Phase 2 — Discovery: read-only module for user and trusted project agents, mirroring mavam, with tests against temporary directories (override, untrusted project, invalid frontmatter, agent dir equal to project `.pi`).
 - [ ] Phase 3 — Profile editing core: pure operations (create, delete with replacement, set/remove default, main and role) plus serializer and atomic writer with backup. Tests: round trip, validation before writing, interrupted write leaves the old file, no other files touched.
-- [ ] Phase 4 — `/hprofile manage` UI over the pure core; save applies through reload; busy handling. Harness tests drive dialog answers for create, edit, delete and discard.
+- [ ] Phase 4a — Searchable model picker: pure filtering/row formatting tested against `fuzzyFilter`; component tested by feeding key input (type `opu`, arrows, Enter, Esc); fallback to plain `select` tested.
+- [ ] Phase 4b — `/hprofile manage` UI over the pure core; save applies through reload; busy handling. Harness tests drive dialog answers for create, edit, delete and discard.
 - [ ] Phase 5 — Docs: README (configure section, manage command, default), architecture (file writes, precedence), manual testing checklist.
 - [ ] Independent review, fixes, focused validation, archive this plan.
 
@@ -107,6 +111,8 @@ Renaming and reordering profiles, editing agent Markdown, CLI subcommands, neste
 - **Broader routing with `default`:** subagents that previously used native routing get the default. Visible in `status`.
 - **Discovery drift:** mavam may change discovery rules after 0.39.0; differences only affect which roles the editor lists, not routing.
 - **Dialog UX:** chained dialogs are slower than a table; acceptable for v1 of the editor.
+- **Custom component API:** `ctx.ui.custom` and pi-tui component contracts may change between Pi versions; mitigated by the plain `select` fallback and keeping the component small.
+- **Delivery:** commits stay local on `main` until the whole feature is finished; no push before the owner says so.
 
 ## Progress and evidence
 
