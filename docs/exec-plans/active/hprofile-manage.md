@@ -80,7 +80,7 @@ Edit <profile>
 - Navigation everywhere: arrows (or `j`/`k`), Enter to choose, Esc to go back. Verified in Pi 1.5.0 `ExtensionSelectorComponent`; it has no search.
 - Profile names validated as today (lowercase, not `next`/`status`/`reload`/`manage`); new profiles are appended to `order`.
 - Deleting the selected or default profile requires choosing a replacement; deleting the last profile is refused.
-- **Model picker with fuzzy search** (owner decision 2026-11-10): typing `opu` narrows the list to Opus models, like Pi's `/model`. Built with `ctx.ui.custom` from public `@earendil-works/pi-tui` exports (`Input`, `SelectList`, `fuzzyFilter`), the same pieces Pi's own `model-selector.js` uses. Rows show `model-id · provider`. All other menus (profile, role, thinking, confirmations) stay on plain `ctx.ui.select`.
+- **Model picker with fuzzy search** (owner decision 2026-11-10): typing `opu` narrows the list to Opus models, like Pi's `/model`. Built with `ctx.ui.custom` from public `@earendil-works/pi-tui` exports (`Input`, `fuzzyFilter`, `Container`/`Text`), as Pi's own `model-selector.js` does; the list is hand-rendered rather than `SelectList`. Rows show `model-id · provider`. All other menus (profile, role, thinking, confirmations) stay on plain `ctx.ui.select`.
 - Fallback: if `ctx.ui.custom` is unavailable or throws, the model picker degrades to plain `select` with models ordered by provider.
 - `@earendil-works/pi-tui` becomes a peer dependency (`^1.5.0`, already a peer of mavam) and a dev dependency for tests.
 - Without UI (`!ctx.hasUI`), `manage` reports that it needs the interactive TUI.
@@ -98,6 +98,12 @@ Renaming and reordering profiles, editing agent Markdown, CLI subcommands, neste
 - [x] Phase 4b — `/hprofile manage` UI over the pure core; save applies through reload; busy handling. Harness tests drive dialog answers for create, edit, delete and discard.
 - [x] Phase 5 — Docs: README (configure section, manage command, default), architecture (file writes, precedence), manual testing checklist.
 - [ ] Independent review, fixes, focused validation, archive this plan.
+
+### Review round 1 (reviewer `ses_e3c60788effe6UCsroOrlW2cZa`, FAIL)
+
+Decision (orchestrator, 2026-11-10): Delete and Set as default stay immediate profile-level writes, each behind an explicit confirmation; route edits remain draft-and-Save. Docs corrected accordingly. Fixes delegated: reload outcome reporting, compare-before-write, changed-routes-only preflight with named profile on reload failure, fsync before rename, dead `required` code, invalid discovered role names, lazy pi-tui import, cancelling pending on removed profile, test realism (offered options, real default save path).
+
+Left open for the owner: an explicit request `model` without explicit `thinking` takes thinking from the role/default route, now also for every unconfigured subagent when a profile has `default`; whether Pi/mavam clamp an unsupported level for the explicit model is untested.
 
 ## Validation
 
