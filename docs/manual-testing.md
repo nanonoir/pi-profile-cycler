@@ -31,7 +31,7 @@ Record Pi and mavam versions, OS/terminal, registered model IDs, authentication 
 
 ## Safety checks
 
-- Compare disposable agent Markdown and unrelated configuration before/after; the only writes are `profile-cycler.json` and `.bak` after an explicit Save.
+- Compare disposable agent Markdown and unrelated configuration before/after; the only writes are `profile-cycler.json` and `.bak` after an explicit Save, Delete or Set as default confirmation.
 - Confirm no requests, telemetry, quota fallback, periodic jobs or credential reads originate from the cycler.
 - Keep only minimal redacted metadata as evidence. Stop the disposable processes and delete only task-owned temporary resources.
 

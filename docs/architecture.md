@@ -17,7 +17,7 @@ The extension manages model routes, not orchestration. Pi owns the parent conver
 | `manage.ts` | `/hprofile manage` dialog flow over injected load/write/reload/activate/pick/discover. |
 | `index.ts` | Pi registration, config loading, commands/status, lifecycle reconciliation and pending idle activation. |
 
-Importing does not register or read configuration. Calling the default export registers one extension. The root file forwards to `src/index.ts`; package metadata declares only that root entrypoint. The only runtime file write is `profile-cycler.json` (and its `.bak`) through `store.ts`, triggered by an explicit Save in `/hprofile manage`. Agent Markdown is never written.
+Importing does not register or read configuration. Calling the default export registers one extension. The root file forwards to `src/index.ts`; package metadata declares only that root entrypoint. The only runtime file write is `profile-cycler.json` (and its `.bak`) through `store.ts`, triggered only by an explicit confirmation in `/hprofile manage` (Save, Delete or Set as default). Agent Markdown is never written.
 
 ## Profiles and precedence
 

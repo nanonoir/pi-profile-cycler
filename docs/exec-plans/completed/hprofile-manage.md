@@ -97,7 +97,7 @@ Renaming and reordering profiles, editing agent Markdown, CLI subcommands, neste
 - [x] Phase 4a — Searchable model picker: pure filtering/row formatting tested against `fuzzyFilter`; component tested by feeding key input (type `opu`, arrows, Enter, Esc); fallback to plain `select` tested.
 - [x] Phase 4b — `/hprofile manage` UI over the pure core; save applies through reload; busy handling. Harness tests drive dialog answers for create, edit, delete and discard.
 - [x] Phase 5 — Docs: README (configure section, manage command, default), architecture (file writes, precedence), manual testing checklist.
-- [ ] Independent review, fixes, focused validation, archive this plan.
+- [x] Independent review, fixes, focused validation, archive this plan.
 
 ### Review round 1 (reviewer `ses_e3c60788effe6UCsroOrlW2cZa`, FAIL)
 
@@ -132,3 +132,42 @@ Left open for the owner: an explicit request `model` without explicit `thinking`
 ### Review round 2 (same reviewer, PASS)
 
 Fixes in `4c3d349` verified (92/92). Follow-up `fix(store)`: short `writeSync` writes are retried (no-progress guard) and the removed-pending cancellation on reload has a test; 94/94, typecheck clean. Accepted residuals: reload still preflights every profile (error names it); compare-before-write is not atomic across processes (small window).
+
+## Implementation Outcome
+
+Closed 2026-11-10. Commits `2c1b989`..`6f92d0d` are local on `main`; nothing was pushed.
+
+### Implemented
+
+- Schema (still `version: 2`): `main`, `default` and `agents` are optional; any role name is allowed; a profile must define `main` or `default`. Precedence per field: explicit request → role route → `default` → native mavam. The orchestrator uses `main`, else `default`. `status` shows the source of each route.
+- Discovery (`src/discovery.ts`): read-only listing of user and trusted project agent Markdown, mirroring mavam 0.39.0; invalid files become diagnostics.
+- Editing core (`src/editing.ts`): pure create, delete (with replacement), set route, set default.
+- Writer (`src/store.ts`): stable serialization, schema re-validation, `.bak`, temp file, fsync, rename, cleanup on failure, retry of short writes.
+- Model picker (`src/model-picker.ts`): fuzzy filter via pi-tui `fuzzyFilter`; plain `select` fallback.
+- `/hprofile manage` (`src/manage.ts`, wired in `src/index.ts`): profile list, edit menu, create, delete, set default, Save/Discard. Save reuses the `/hprofile reload` path.
+- Packaging: `@earendil-works/pi-tui` as peer `^1.5.0` and dev `1.5.0`.
+- Docs: README (manage, default, priority), architecture (modules, precedence, single write path), manual-testing rows for manage.
+
+Main areas: `src/`, `tests/`, `package.json`, `README.md`, `docs/`.
+
+### Deviations from Design
+
+- **Delete and Set as default write immediately** after an explicit confirmation, not on Save. They are profile-level actions; route edits stay draft-and-Save. Decided in review round 1 and documented.
+- **New profiles require a default route.** The design showed the default as optional at creation; a new profile must be usable, so `createProfile` requires it.
+- **Save refuses if the file changed on disk** since the menu was built (compare-before-write). Added during review fixes; not in the original design.
+- **Reload preflights every profile**, not only changed ones; the error names the offending profile. Only Save preflights changed routes.
+- **Lazy pi-tui import** in the model picker, with plain `select` fallback. The list is hand-rendered, as the design said.
+- Review round 1 fixes also covered: reload outcome reporting, fsync before rename, invalid discovered role names, cancelling a pending switch when its profile is removed, and more realistic tests.
+
+### Validation
+
+- `npm test`: 94/94 pass. `npm run typecheck`: clean (re-run at closure).
+- Independent review round 1: FAIL → fixes in `4c3d349` and decisions in `c5bda8d`. Round 2: PASS (reviewer `ses_e3c60788effe6UCsroOrlW2cZa`). Follow-up `f1343dc` added short-write retry and a pending-cancellation test.
+- Not validated: real Pi TUI behavior (manage dialogs, fuzzy picker in a real terminal), authenticated providers, real subagent spawns, Windows hotkeys. These remain open rows in `docs/manual-testing.md`.
+
+### Follow-up
+
+- Owner decision: an explicit request `model` without explicit `thinking` still takes thinking from the role/default route; now applies to every unconfigured subagent when a profile has `default`. Whether Pi/mavam clamp an unsupported level is untested. See `docs/exec-plans/tech-debt-tracker.md`.
+- Real TUI and provider smoke of `/hprofile manage` and the fuzzy picker.
+- Compare-before-write is not atomic across processes.
+- Nested helpers remain unsupported (see `docs/compatibility.md`).
