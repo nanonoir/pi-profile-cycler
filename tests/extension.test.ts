@@ -2,6 +2,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { harness } from "./harness.ts";
 import { ENTRY_TYPE } from "../src/state.ts";
+import { registerCycler } from "../src/index.ts";
+
+test("inside a pi-subagents child nothing is registered and no model is touched; otherwise registration is unchanged", async () => {
+  const registered: string[] = [];
+  const api = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => { registered.push(`${name}:${String(args[0])}`); } });
+  registerCycler(api as never, { env: { PI_SUBAGENT_CHILD: "1" } });
+  assert.equal(registered.length, 0, "no handlers, command, shortcut, setModel or appendEntry");
+  registerCycler(api as never, { env: { PI_SUBAGENT_CHILD: "0" } });
+  registerCycler(api as never, { env: {} });
+  assert.equal(registered.filter(entry => entry.startsWith("registerCommand:hprofile")).length, 2);
+  assert.ok(registered.includes("registerShortcut:alt+m") && registered.includes("on:tool_call"));
+});
 
 test("commands and shortcut cycle A B C A, menu and status show effective routes", async () => {
   const h = harness();

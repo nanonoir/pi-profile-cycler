@@ -18,6 +18,8 @@ export interface CyclerOptions {
   writeConfig?: (config: Config) => void;
   pickModel?: (ctx: ExtensionContext, options: PickModelOptions) => Promise<RegisteredModel | undefined>;
   discoverRoles?: (ctx: ExtensionContext) => Discovery;
+  /** Environment consulted for the pi-subagents child marker; defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv;
 }
 
 interface ActivateOptions {
@@ -45,8 +47,12 @@ interface ActivateOptions {
  * The navigation cancel below only covers switches that began earlier; no sticky lock is kept, so a
  * navigation cancelled by another extension leaves nothing behind. session_tree reuses the cached,
  * validated config; the file is read only at session_start and on explicit reload.
+ *
+ * Inside a pi-subagents child process (`PI_SUBAGENT_CHILD=1`, set by its async runner, which loads ambient user
+ * extensions) nothing is registered: the child must keep the model pi-subagents resolved for it.
  */
 export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): void {
+  if ((options.env ?? process.env).PI_SUBAGENT_CHILD === "1") return;
   const configPath = () => join(getAgentDir(), "profile-cycler.json");
   const readConfig = options.readConfig ?? (() => readFileSync(configPath(), "utf8"));
   const save = options.writeConfig ?? ((next: Config) => writeConfig(configPath(), next));
