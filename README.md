@@ -1,58 +1,80 @@
 # Pi Agents Profile Cycler
 
-A small, independent Pi extension for `mavam/pi-agents`: switch the parent model/thinking and the routes of **new direct spawns**, without editing agent Markdown or global active state. First package version: 1.0.0; configuration schema: 2. Private and UNLICENSED until the owner chooses a license.
+> Switch your orchestrator and every subagent between model profiles in one keystroke.
 
-**Development build, not a certified release.** Pi 1.5.0 tool/session contracts and mavam v0.39.0 spawn/helper resolvers are tested locally without starting agents. Real provider calls, Windows TUI and mavam end-to-end smoke remain unverified. [Compatibility evidence](docs/compatibility.md) · [remaining smoke checks](docs/manual-testing.md) · [PRD](docs/pi-agents-profile-cycler.md).
+A small [Pi](https://github.com/earendil-works/pi) extension for [`mavam/pi-agents`](https://github.com/mavam/pi-agents). Pick a profile and the parent model, its thinking level and the routes for new subagents change together, without restarting the session or touching your agent files.
 
-## Try locally without changing global Pi
-
-Requires Node 24, Pi 1.5.x and the existing mavam runtime. Development installs only SDK/test dependencies, not a second subagent runtime:
-
-```sh
-npm ci
-npm test
-npm run typecheck
+```text
+Alt+M   balanced  →  claude  →  codex  →  balanced …
 ```
 
-For an actual smoke, follow the disposable-harness checklist first. Do not load the historical fixture extension. Do not load both `src/index.ts` and the root entrypoint: both register the same shortcut/command.
+## Features
 
-## Optional installation (owner action, not performed during development)
+- ⚡ **One key**: `Alt+M` cycles profiles. `/hprofile` opens a picker.
+- 🧭 **Per-role routing**: `implementer` on Sonnet, `reviewer` on Gemini, all in one profile.
+- 🗣️ **You still decide**: ask the orchestrator for a specific model and it wins over the profile.
+- 🌳 **Session-aware**: each conversation branch remembers its own profile across resume, fork and `/tree`.
+- 🛡️ **Safe switching**: every model is validated first; failures roll back and never leave a false status.
 
-1. Disable any older cycler extension before enabling this one. Back up and manually inspect agent Markdown if the old v1 modified it; this package does not restore those files automatically.
-2. Keep the repository directory intact. Install that directory as a local Pi package (`pi install <absolute-repository-path>`), **or** load just its root `pi-profile-cycler.ts` with Pi's extension option. Do not copy the root file alone: it imports `src/`.
-3. Copy `examples/profile-cycler.json` to Pi's agent directory as `profile-cycler.json` **only if no personal file already exists**. Normally this is `~/.pi/agent`; a disposable harness should use a separate agent directory. Nothing creates or overwrites this file automatically.
-4. Verify every configured ID against your model registry/provider setup. The example IDs come from the PRD; their presence is not guaranteed.
-5. Reload Pi, then inspect `/hprofile status` before delegating.
+## Install
 
-For updates, keep the personal JSON and update only the package source. On uninstall, remove the package through Pi (or remove the explicit extension path) and reload; the optional JSON can be removed manually. Session history is retained. This does not reverse model changes already recorded in a conversation.
+Requires Pi 1.5.x and `mavam/pi-agents`.
+
+```sh
+git clone <this-repo> pi-profile-cycler
+pi install ./pi-profile-cycler
+cp pi-profile-cycler/examples/profile-cycler.json ~/.pi/agent/profile-cycler.json
+```
+
+Only copy the example if you don't already have a `profile-cycler.json`. Then check the model IDs against `pi --list-models`.
 
 ## Use
 
-| Action | Behavior |
+| Command | What it does |
 |---|---|
-| Alt+M / `/hprofile next` | Cycle `balanced → claude → codex`, or the JSON's configured order. Tab remains untouched. Alt+P is not used: on Windows Pi reserves it for "previous model" and silently skips extension shortcuts on it. |
-| `/hprofile` | Select from a TUI menu; in non-UI mode list choices. |
-| `/hprofile <name>` | Activate a named profile after validating every declared route. |
-| `/hprofile status` | Selected/pending profile, actual parent model/thinking, configured parent and future direct routes. |
-| `/hprofile reload` | Validate edited JSON and all routes. Keep selected name and reapply its updated parent route. On failure retain the previous configuration. If the name was removed, require explicit selection and block direct spawns meanwhile. Busy reloads are refused with a retry instruction. |
+| `Alt+M` · `/hprofile next` | Next profile |
+| `/hprofile` | Pick from a menu |
+| `/hprofile <name>` | Activate a profile |
+| `/hprofile status` | Active profile, real parent model and next subagent routes |
+| `/hprofile reload` | Apply edits to the JSON; on error the previous config stays |
 
-Busy selections remain pending until Pi's `agent_settled` boundary plus idle recheck, or `before_agent_start` before the next request; the latest valid requested selection wins. Until then, the old profile routes new direct spawns. Reload preserves pending intent unless its name or selected profile was removed, in which case it explicitly notifies cancellation. Failed pending application is also explicitly cancelled, not retried forever. Preflight failure never queues a request or silently chooses another provider. Provider exhaustion is not detected or handled automatically.
+If Pi is busy, the switch is queued and applied when the current run settles.
 
-## Routing and session policy
+## Configure
 
-- `agent.profile` takes precedence. Only if absent, an exact configured `agent.name` may match. Unknown profiles/roles retain native mavam routing; `teacher` is untouched unless explicitly configured.
-- **Explicit wins:** a non-empty `model` or `thinking` in the `agent_spawn` request is kept (so "spawn the implementer with model X" works); the profile fills only missing fields. The orchestrator can therefore bypass the profile whenever it sends a model. Explicit values are not preflighted by the cycler; mavam/Pi reject unknown models. Jobs, graph dependencies, instructions, tools, skills and all other arguments are preserved. Already-created agents never migrate.
-- Nested helper routing is **unsupported**: mavam uses a separate internal path. No monkeypatch or replacement runtime is used.
-- Each new branch without a selection pins `defaultProfile` once via a custom session entry. Restore reads only `getBranch()`, never unrelated branches.
-- Startup, `/resume`, `/reload`, new session and `/fork` restore the current branch. `/tree` uses the cached validated configuration, not unsaved/unreloaded edits, and reconciles its routes after preflight; because Pi emits that event while navigation is still busy, the parent route is marked pending until a settled/next-request boundary. If that reconciliation fails, routing becomes unavailable and direct spawns are blocked until explicit selection. Restoring an existing selection writes no duplicate selection entry. Missing restored profiles never borrow another window's selection.
-- Manual `/model` changes the actual parent only; the selected future-spawn profile remains selected. `status` shows both. Explicit activation, configuration reload or lifecycle restoration reapplies the profile's configured parent route.
+`~/.pi/agent/profile-cycler.json` (shortened):
 
-New parent requests wait at `before_agent_start` for an in-flight switch; session/tree/fork navigation is temporarily cancelled with a retry notice during that switch. Shutdown/reload waits for any interrupted transaction to unwind before Pi invalidates its API. Pi's early prompt/auth/image preparation happens before the request hook and is not gated. A hung `setModel` also holds request/shutdown boundaries; the extension does not race it with a forced timeout. If a pending switch fails, Pi may continue the parent run after an explicit failure notice; the extension cannot veto that run. Inspect `/hprofile status` rather than assuming rollback succeeded.
+```json
+{
+  "version": 2,
+  "defaultProfile": "balanced",
+  "order": ["balanced"],
+  "profiles": {
+    "balanced": {
+      "main": { "model": "openai/gpt-6.1-sol", "thinking": "medium" },
+      "agents": {
+        "implementer": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" },
+        "reviewer": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" }
+      }
+    }
+  }
+}
+```
 
-## Configuration and migration
+`main` is the orchestrator and `agents` maps mavam roles to a model. Each profile currently needs all seven standard roles; see [`examples/`](examples/profile-cycler.json) for a full example.
 
-One editable JSON, no mutable global `active`. All seven standard agent roles are required per profile, alongside `main`. Additional profiles/roles are allowed; `next`, `status`, and `reload` are reserved profile names. Unknown fields and duplicate JSON keys fail with field-specific errors. Thinking must be supported by each actual registered model, not merely be a recognized schema value.
+## Limits
 
-The pure `migrateLegacyJson` export in `src/config.ts` classifies original core model signatures by content: historical `codex-low` becomes `claude`, and `claude-low` becomes `codex`. It adds missing Gemini roles, preserves custom roles, rejects customized/ambiguous core signatures and performs **no writes**. Review any generated JSON before intentionally saving it; never overwrite personal configuration on update.
+- Only **new direct** subagents are routed. Running agents keep their model.
+- **Nested** subagents (spawned by other subagents) use mavam's native routing.
+- On Windows, Pi reserves `Alt+P`, so the shortcut is `Alt+M`.
 
-The original files remain in `tests/fixtures/` as historical evidence only. Runtime code has no direct filesystem writes, telemetry, polling, quota fallback, credential handling or permission guards. Pi's own model and custom-entry APIs intentionally record session history. [Architecture](docs/architecture.md).
+## Develop
+
+```sh
+npm ci && npm test && npm run typecheck
+```
+
+[Architecture](docs/architecture.md) · [Compatibility](docs/compatibility.md) · [Manual testing](docs/manual-testing.md) · [PRD](docs/pi-agents-profile-cycler.md)
+
+<sub>Private · UNLICENSED · not an official pi-agents plugin</sub>
