@@ -1,16 +1,19 @@
 /** Serializes and atomically writes the config; the previous file is kept as `<path>.bak`. */
-import { copyFileSync, existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, renameSync, rmSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { parseConfig, type Config, type Profile } from "./config.ts";
 
 export interface StoreFs {
   existsSync(path: string): boolean;
   copyFileSync(from: string, to: string): void;
-  writeFileSync(path: string, data: string): void;
+  openSync(path: string, flags: "w"): number;
+  writeSync(fd: number, data: string): unknown;
+  fsyncSync(fd: number): void;
+  closeSync(fd: number): void;
   renameSync(from: string, to: string): void;
   rmSync(path: string, options: { force: true }): void;
 }
-const nodeFs: StoreFs = { existsSync, copyFileSync, writeFileSync: (path, data) => writeFileSync(path, data, "utf8"), renameSync, rmSync };
+const nodeFs: StoreFs = { existsSync, copyFileSync, openSync, writeSync, fsyncSync, closeSync, renameSync, rmSync };
 
 export function serializeConfig(config: Config): string {
   const profiles: Record<string, unknown> = {};
@@ -30,7 +33,8 @@ export function writeConfig(path: string, config: Config, fs: StoreFs = nodeFs):
   const temp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
   try {
     if (fs.existsSync(path)) fs.copyFileSync(path, `${path}.bak`);
-    fs.writeFileSync(temp, text);
+    const fd = fs.openSync(temp, "w");
+    try { fs.writeSync(fd, text); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     fs.renameSync(temp, path);
   } catch (error) {
     try { fs.rmSync(temp, { force: true }); } catch { /* keep the original error */ }

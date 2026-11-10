@@ -177,10 +177,13 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
     await activate(config.order[(index + 1) % config.order.length], ctx);
   }
 
-  async function reload(ctx: ExtensionContext): Promise<void> {
+  /** False when the selected profile could not be re-activated (activate already notified, config reverted). */
+  async function reload(ctx: ExtensionContext): Promise<boolean> {
     if (!ctx.isIdle() || applying) throw new Error("Reload not applied: parent busy; retry when idle");
     const candidate = parseConfig(readConfig());
-    for (const profile of Object.values(candidate.profiles)) preflight(profile, ctx);
+    for (const [name, profile] of Object.entries(candidate.profiles)) {
+      try { preflight(profile, ctx); } catch (error) { throw new Error(`profiles.${name}: ${message(error)}`); }
+    }
     const previous = config;
     config = candidate;
     if (selected && !Object.hasOwn(candidate.profiles, selected)) {
@@ -191,9 +194,13 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
     } else if (selected) {
       // Every successful selected-route activation must be pinned on this branch.
       // The commit checks branch history, so existing selections are not duplicated.
-      if (!await activate(selected, ctx, { persist: true, keepPending: true })) { config = previous; return; }
+      if (!await activate(selected, ctx, { persist: true, keepPending: true })) { config = previous; return false; }
       if (pending && !Object.hasOwn(candidate.profiles, pending)) cancelPending(ctx, "profile removed by reload");
-    } else ctx.ui.notify("Configuration reloaded; choose /hprofile <name>", "info");
+    } else {
+      if (pending && !Object.hasOwn(candidate.profiles, pending)) cancelPending(ctx, "profile removed by reload");
+      ctx.ui.notify("Configuration reloaded; choose /hprofile <name>", "info");
+    }
+    return true;
   }
 
   // Not alt+p: on Windows Pi reserves it for cycling to the previous model and skips extension shortcuts.
@@ -206,13 +213,13 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
     handler: async (args, ctx) => {
       try {
         const choice = args.trim();
-        if (choice === "reload") return await reload(ctx);
+        if (choice === "reload") { await reload(ctx); return; }
         if (choice === "manage") {
           if (!ctx.hasUI) { ctx.ui.notify("/hprofile manage needs the interactive TUI", "warning"); return; }
           return await manage(ctx, {
             load: () => parseConfig(readConfig()),
             write: save,
-            reload: () => reload(ctx),
+            reload: async () => { if (!await reload(ctx)) throw new Error("the selected profile could not be re-activated"); },
             activate: name => activate(name, ctx),
             selected: () => selected,
             pick: options.pickModel ?? pickModel,

@@ -25,7 +25,7 @@ A profile may define `default`, `main` and any `agents` roles; it must define `m
 
 ## Profile editor
 
-`/hprofile manage` edits an in-memory draft and writes only on Save. Before writing it validates the schema and preflights the edited profile's routes against Pi's registry and supported thinking; reload still preflights as before. Saving goes through the same reload path as `/hprofile reload`; if Pi is busy the file is saved and the user is told to reload. The menu re-reads the file each pass so a saved-but-unapplied edit is not overwritten by stale state. Model choices come from `modelRegistry.getAvailable()`, thinking from `getSupportedThinkingLevels`. Formatting of a hand-edited file is not preserved after a Save.
+`/hprofile manage` edits an in-memory draft of route changes and writes them only on Save; Delete and Set as default are profile-level actions that write after an explicit confirmation. Before writing it re-reads the file and refuses if it differs from the version the menu was built from, validates the schema and preflights the changed routes against Pi's registry and supported thinking; reload preflights every profile and names the offending one. If re-activating the selected profile fails, the file is saved but reported as not applied. Saving goes through the same reload path as `/hprofile reload`; if Pi is busy the file is saved and the user is told to reload. The menu re-reads the file each pass so a saved-but-unapplied edit is not overwritten by stale state. Model choices come from `modelRegistry.getAvailable()`, thinking from `getSupportedThinkingLevels`. Formatting of a hand-edited file is not preserved after a Save.
 
 ## Activation transaction
 

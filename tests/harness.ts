@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerCycler } from "../src/index.ts";
-import { parseConfig, type ThinkingLevel } from "../src/config.ts";
+import { parseConfig, type Config, type ThinkingLevel } from "../src/config.ts";
 import type { Discovery } from "../src/discovery.ts";
 import { serializeConfig } from "../src/store.ts";
 import type { RegisteredModel } from "../src/switching.ts";
 
 export interface FakeEvent { toolName?: string; input?: Record<string, unknown> }
 type Handler = (event: FakeEvent, ctx: ExtensionContext) => Promise<unknown>;
-export function harness() {
+/** `realStore`: no injected read/write, so the extension uses `$PI_CODING_AGENT_DIR/profile-cycler.json`. */
+export function harness(opts: { realStore?: boolean } = {}) {
   let text = readFileSync(new URL("../examples/profile-cycler.json", import.meta.url), "utf8");
   const config = parseConfig(text);
   const ids = [...new Set(Object.values(config.profiles).flatMap(p => [p.main!.model, ...Object.values(p.agents).map(r => r.model)]))];
@@ -32,6 +33,9 @@ export function harness() {
   let failWrite = false;
   let discovery: Discovery = { roles: [], diagnostics: [] };
   const script: unknown[] = [];
+  const offered: Array<{ title: string; options: string[] }> = [];
+  /** Next scripted answer; functions in the script are side effects (e.g. editing the file) run when reached. */
+  const take = (): unknown => { let next = script.shift(); while (typeof next === "function") { (next as () => void)(); next = script.shift(); } return next; };
   const writes: string[] = [];
   const violations: string[] = [];
   /** Models the SDK invalidating a replaced runner: any later API/context use is recorded and throws. */
@@ -48,15 +52,16 @@ export function harness() {
       notify: (text: string) => { live("notify"); notifications.push(text); },
       setStatus: (_key: string, text: string) => { live("setStatus"); statuses.push(text); },
       select: async (title: string, options: string[]) => {
+        offered.push({ title, options: [...options] });
         if (!script.length) return answer;
-        const next = script.shift() as string | undefined;
+        const next = take() as string | undefined;
         if (next === undefined) return undefined;
         const found = options.find(option => option === next) ?? options.find(option => option.startsWith(next));
         if (!found) throw new Error(`scripted select "${next}" not in [${options.join(" | ")}] (${title})`);
         return found;
       },
-      input: async () => script.shift() as string | undefined,
-      confirm: async () => script.shift() === true,
+      input: async () => take() as string | undefined,
+      confirm: async () => take() === true,
     },
   } as unknown as ExtensionContext;
   const api = {
@@ -80,11 +85,13 @@ export function harness() {
     appendEntry: (customType: string, data: unknown) => { live("appendEntry"); branch.push({ type: "custom", customType, data }); },
   } as unknown as ExtensionAPI;
   registerCycler(api, {
-    readConfig: () => text,
-    writeConfig: next => { if (failWrite) throw new Error("disk full"); text = serializeConfig(next); writes.push(text); },
+    ...(opts.realStore ? {} : {
+      readConfig: () => text,
+      writeConfig: (next: Config) => { if (failWrite) throw new Error("disk full"); text = serializeConfig(next); writes.push(text); },
+    }),
     // Scripted answer is a `provider/id`; undefined cancels.
     pickModel: async (_ctx, options) => {
-      const next = script.shift() as string | undefined;
+      const next = take() as string | undefined;
       if (next === undefined) return undefined;
       const found = options.models.find(m => `${m.provider}/${m.id}` === next);
       if (!found) throw new Error(`scripted model ${next} not offered (${options.title})`);
@@ -93,7 +100,7 @@ export function harness() {
     discoverRoles: () => discovery,
   });
   return {
-    api, ctx, config, violations, writes, text: () => text,
+    api, ctx, config, violations, writes, offered, text: () => text,
     /** Queue answers consumed in order by select (label or label prefix), input, confirm (true/false) and the model picker (provider/id); `undefined` = Esc. */
     script: (...answers: unknown[]) => { script.push(...answers); },
     scriptLeft: () => script.length,

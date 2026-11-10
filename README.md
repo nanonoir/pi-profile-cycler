@@ -44,7 +44,7 @@ If Pi is busy, the switch is queued and applied when the current run settles.
 
 ## Manage profiles
 
-`/hprofile manage` lists your profiles, then lets you edit the **default**, the **orchestrator** and every subagent it finds in `~/.pi/agent/agents` and your trusted project's `.pi/agents`. Navigate with arrows, Enter and Esc; in the model picker just type to search (`opu` → Opus models). Nothing is written until **Save**, which validates every model, keeps a `profile-cycler.json.bak` and applies the change.
+`/hprofile manage` lists your profiles, then lets you edit the **default**, the **orchestrator** and every subagent it finds in `~/.pi/agent/agents` and your trusted project's `.pi/agents`. Navigate with arrows, Enter and Esc; in the model picker just type to search (`opu` → Opus models). Route edits are written only on **Save**, which validates every changed model, keeps a `profile-cycler.json.bak` and applies the change. **Delete** and **Set as default** are profile-level actions that write immediately, after you confirm. If the file changed on disk meanwhile, nothing is written and you must reopen the editor.
 
 ## Configure
 

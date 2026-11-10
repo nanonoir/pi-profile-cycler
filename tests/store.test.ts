@@ -50,12 +50,32 @@ test("interrupted write leaves the original and no temp files", () => withDir((d
   assert.throws(() => writeConfig(path, base(), crash), /crash/);
   assert.equal(readFileSync(path, "utf8"), "original");
   assert.deepEqual(readdirSync(dir).sort(), ["profile-cycler.json", "profile-cycler.json.bak"]);
-  const failWrite: StoreFs = { ...real, writeFileSync: (p, data) => { writeFileSync(p, data.slice(0, 10)); throw new Error("disk full"); } };
+  const failWrite: StoreFs = { ...real, writeSync: (fd, data) => { real.writeSync(fd, data.slice(0, 10)); throw new Error("disk full"); } };
   assert.throws(() => writeConfig(path, base(), failWrite), /disk full/);
   assert.equal(readFileSync(path, "utf8"), "original");
   assert.deepEqual(readdirSync(dir).sort(), ["profile-cycler.json", "profile-cycler.json.bak"]);
   writeConfig(path, base(), { ...real, renameSync });
   assert.deepEqual(parseConfig(readFileSync(path, "utf8")), base());
+}));
+
+test("a failing .bak copy leaves the original intact and writes nothing", () => withDir((dir, path) => {
+  writeFileSync(path, "original");
+  const noBackup: StoreFs = { ...real, copyFileSync: () => { throw new Error("no space"); } };
+  assert.throws(() => writeConfig(path, base(), noBackup), /no space/);
+  assert.equal(readFileSync(path, "utf8"), "original");
+  assert.deepEqual(readdirSync(dir), ["profile-cycler.json"]);
+}));
+
+test("the temp file is flushed to disk before the rename", () => withDir((_dir, path) => {
+  const order: string[] = [];
+  const spy: StoreFs = {
+    ...real,
+    fsyncSync: fd => { order.push("fsync"); real.fsyncSync(fd); },
+    closeSync: fd => { order.push("close"); real.closeSync(fd); },
+    renameSync: (from, to) => { order.push("rename"); real.renameSync(from, to); },
+  };
+  writeConfig(path, base(), spy);
+  assert.deepEqual(order, ["fsync", "close", "rename"]);
 }));
 
 test("invalid config is never written", () => withDir((dir, path) => {

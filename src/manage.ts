@@ -1,18 +1,19 @@
 /** `/hprofile manage`: dialog flow over the pure editing core. Edits stay in a draft until Save; the file is the source of truth. */
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { THINKING_LEVELS, type Config, type Profile, type Route } from "./config.ts";
+import { NAME, THINKING_LEVELS, type Config, type Profile, type Route } from "./config.ts";
 import type { Discovery } from "./discovery.ts";
 import { createProfile, deleteProfile, setDefaultProfile, setRoute, type RouteTarget } from "./editing.ts";
 import { modelId, type PickModelOptions } from "./model-picker.ts";
-import { message, preflight, type RegisteredModel } from "./switching.ts";
+import { serializeConfig } from "./store.ts";
+import { message, resolveRoute, type RegisteredModel } from "./switching.ts";
 
 export interface ManageDeps {
   /** Reads and validates the configuration file. */
   load(): Config;
   /** Validates and atomically writes the configuration file. */
   write(config: Config): void;
-  /** Existing reload path; throws when the parent is busy or the file is rejected. */
+  /** Existing reload path; throws when the parent is busy, the file is rejected or the selected profile cannot be re-activated. */
   reload(): Promise<void>;
   activate(name: string): Promise<boolean>;
   selected(): string | undefined;
@@ -26,10 +27,25 @@ const fmt = (route: Route) => `${route.model} (${route.thinking})`;
 
 type Outcome = "failed" | "saved" | "applied";
 
-/** Persist `next`, then apply it through the reload path. Nothing is written when validation or preflight fails. */
-async function commit(ctx: ExtensionContext, deps: ManageDeps, next: Config, check: string[]): Promise<Outcome> {
+/** Routes of `name` that are new or modified relative to `base`, labelled like preflight errors. */
+function changedRoutes(base: Config, next: Config, name: string): Array<[string, Route]> {
+  const before = base.profiles[name];
+  const after = next.profiles[name];
+  const routes: Array<[string, Route | undefined, Route | undefined]> = [
+    ["default", before?.default, after.default],
+    ["main", before?.main, after.main],
+    ...Object.entries(after.agents).map(([role, route]) => [`agents.${role}`, before?.agents[role], route] as [string, Route | undefined, Route | undefined]),
+  ];
+  return routes.flatMap(([label, old, route]) => route && JSON.stringify(old) !== JSON.stringify(route) ? [[label, route] as [string, Route]] : []);
+}
+
+/** Persist `next`, then apply it through the reload path. Nothing is written when the file changed, validation or preflight fails. */
+async function commit(ctx: ExtensionContext, deps: ManageDeps, base: Config, next: Config, edited?: string): Promise<Outcome> {
   try {
-    for (const name of check) preflight(next.profiles[name], ctx);
+    if (edited) for (const [label, route] of changedRoutes(base, next, edited)) {
+      try { resolveRoute(route, ctx); } catch (error) { throw new Error(`${label}: ${message(error)}`); }
+    }
+    if (serializeConfig(deps.load()) !== serializeConfig(base)) throw new Error("profile-cycler.json changed on disk; reopen /hprofile manage");
     deps.write(next);
   } catch (error) { ctx.ui.notify(`Not saved: ${message(error)}`, "error"); return "failed"; }
   try { await deps.reload(); ctx.ui.notify("Configuration saved", "info"); return "applied"; }
@@ -78,8 +94,10 @@ async function editRoute(ctx: ExtensionContext, deps: ManageDeps, draft: Config,
 /** Returns once the draft is saved (or saved but not applied), or abandoned. */
 async function editProfile(ctx: ExtensionContext, deps: ManageDeps, base: Config, name: string, start = base): Promise<void> {
   const discovery = deps.discover();
-  if (discovery.diagnostics.length) ctx.ui.notify(`${discovery.diagnostics.length} agent file(s) could not be read and are not listed`, "warning");
-  const native = new Map(discovery.roles.map(role => [role.name, role]));
+  const valid = discovery.roles.filter(role => NAME.test(role.name));
+  const unlisted = discovery.diagnostics.length + discovery.roles.length - valid.length;
+  if (unlisted) ctx.ui.notify(`${unlisted} agent file(s) could not be read and are not listed`, "warning");
+  const native = new Map(valid.map(role => [role.name, role]));
   let draft = start;
   const dirty = () => JSON.stringify(draft) !== JSON.stringify(base);
   for (;;) {
@@ -100,7 +118,7 @@ async function editProfile(ctx: ExtensionContext, deps: ManageDeps, base: Config
     const answer = await ctx.ui.select(`Edit ${name}${dirty() ? " (unsaved changes)" : ""}`, options);
     if (answer === "Save") {
       if (!dirty()) return;
-      if (await commit(ctx, deps, draft, [name]) !== "failed") return;
+      if (await commit(ctx, deps, base, draft, name) !== "failed") return;
     } else if (answer === undefined || answer === "Discard") {
       if (!dirty() || await ctx.ui.confirm("Discard changes", `Discard unsaved changes to ${name}?`)) return;
     } else {
@@ -142,8 +160,13 @@ async function deleteFlow(ctx: ExtensionContext, deps: ManageDeps, config: Confi
   let next: Config;
   try { next = deleteProfile(config, name, replacement); }
   catch (error) { ctx.ui.notify(`Cannot delete: ${message(error)}`, "error"); return; }
-  const outcome = await commit(ctx, deps, next, []);
+  const outcome = await commit(ctx, deps, config, next);
   if (outcome === "applied" && activateAfter) await deps.activate(activateAfter);
+}
+
+async function setDefaultFlow(ctx: ExtensionContext, deps: ManageDeps, config: Config, name: string): Promise<void> {
+  if (!await ctx.ui.confirm("Set as default", `Make ${name} the default profile? This rewrites profile-cycler.json (a .bak is kept).`)) return;
+  await commit(ctx, deps, config, setDefaultProfile(config, name));
 }
 
 export async function manage(ctx: ExtensionContext, deps: ManageDeps): Promise<void> {
@@ -167,7 +190,7 @@ export async function manage(ctx: ExtensionContext, deps: ManageDeps): Promise<v
       if (action === "Activate") await deps.activate(name);
       else if (action === "Edit") await editProfile(ctx, deps, config, name);
       else if (action === "Delete") await deleteFlow(ctx, deps, config, name);
-      else if (action === "Set as default") await commit(ctx, deps, setDefaultProfile(config, name), []);
+      else if (action === "Set as default") await setDefaultFlow(ctx, deps, config, name);
     } catch (error) { ctx.ui.notify(`Profile error: ${message(error)}`, "error"); }
   }
 }

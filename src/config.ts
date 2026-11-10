@@ -3,7 +3,7 @@ export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhig
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export const REQUIRED_ROLES = ["specs-writer", "designer", "implementer", "fix-agent", "reviewer", "explorer", "archiver"] as const;
 const LEGACY_ROLES = REQUIRED_ROLES.slice(0, 4);
-const NAME = /^[a-z0-9][a-z0-9_-]*$/;
+export const NAME = /^[a-z0-9][a-z0-9_-]*$/;
 
 export interface Route { model: string; thinking: ThinkingLevel }
 export interface Profile { default?: Route; main?: Route; agents: Record<string, Route> }
@@ -35,29 +35,28 @@ function route(value: unknown, path: string): Route {
   if (typeof entry.thinking !== "string" || !THINKING_LEVELS.some(level => level === entry.thinking)) fail(`${path}.thinking`, `expected one of ${THINKING_LEVELS.join(", ")}`);
   return { model: entry.model as string, thinking: entry.thinking as ThinkingLevel };
 }
-function profile(value: unknown, path: string, required: readonly string[]): Profile {
+function profile(value: unknown, path: string): Profile {
   const entry = object(value, path);
-  if (required.length) fields(entry, ["main", "agents"], path); else fields(entry, [], path, ["default", "main", "agents"]);
-  if (!required.length && !Object.hasOwn(entry, "main") && !Object.hasOwn(entry, "default")) fail(`${path}.main`, "profile must define main or default");
+  fields(entry, [], path, ["default", "main", "agents"]);
+  if (!Object.hasOwn(entry, "main") && !Object.hasOwn(entry, "default")) fail(`${path}.main`, "profile must define main or default");
   const rawAgents = Object.hasOwn(entry, "agents") ? object(entry.agents, `${path}.agents`) : {};
   const agents: Record<string, Route> = Object.create(null);
   for (const [key, value] of Object.entries(rawAgents)) {
     name(key, `${path}.agents.${key}`);
     agents[key] = route(value, `${path}.agents.${key}`);
   }
-  for (const role of required) if (!Object.hasOwn(agents, role)) fail(`${path}.agents.${role}`, "required role missing");
   const result: Profile = { agents };
   if (Object.hasOwn(entry, "default")) result.default = route(entry.default, `${path}.default`);
   if (Object.hasOwn(entry, "main")) result.main = route(entry.main, `${path}.main`);
   return result;
 }
-function orderAndProfiles(rawOrder: unknown, rawProfiles: unknown, required: readonly string[]): { order: string[]; profiles: Record<string, Profile> } {
+function orderAndProfiles(rawOrder: unknown, rawProfiles: unknown, shape: (value: unknown, path: string) => Profile = profile): { order: string[]; profiles: Record<string, Profile> } {
   const source = object(rawProfiles, "$.profiles");
   const profiles: Record<string, Profile> = Object.create(null);
   for (const [key, value] of Object.entries(source)) {
     name(key, `$.profiles.${key}`);
     if (["next", "status", "reload", "manage"].includes(key)) fail(`$.profiles.${key}`, "reserved command name");
-    profiles[key] = profile(value, `$.profiles.${key}`, required);
+    profiles[key] = shape(value, `$.profiles.${key}`);
   }
   if (!Array.isArray(rawOrder) || rawOrder.length === 0) fail("$.order", "expected nonempty array");
   const seen = new Set<string>();
@@ -70,10 +69,17 @@ function orderAndProfiles(rawOrder: unknown, rawProfiles: unknown, required: rea
   for (const key of Object.keys(profiles)) if (!seen.has(key)) fail(`$.profiles.${key}`, "profile missing from order");
   return { order, profiles };
 }
+/** v1 profiles: exactly `main` and `agents`, with the four legacy roles present. */
+function legacyProfile(value: unknown, path: string): Profile {
+  fields(object(value, path), ["main", "agents"], path);
+  const result = profile(value, path);
+  for (const role of LEGACY_ROLES) if (!Object.hasOwn(result.agents, role)) fail(`${path}.agents.${role}`, "required role missing");
+  return result;
+}
 export function validateConfig(value: unknown): Config {
   const root = object(value, "$"); fields(root, ["version", "defaultProfile", "order", "profiles"], "$");
   if (root.version !== 2) fail("$.version", "expected 2");
-  const { order, profiles } = orderAndProfiles(root.order, root.profiles, []);
+  const { order, profiles } = orderAndProfiles(root.order, root.profiles);
   const defaultProfile = name(root.defaultProfile, "$.defaultProfile");
   if (!Object.hasOwn(profiles, defaultProfile)) fail("$.defaultProfile", "unknown profile");
   return { version: 2, defaultProfile, order, profiles };
@@ -130,7 +136,7 @@ const signatures: Record<string, readonly string[]> = {
 /** Classify by all core model IDs, not historical names. Refuse noncanonical/ambiguous input. */
 export function migrateLegacy(value: unknown): Config {
   const root = object(value, "$"); fields(root, ["active", "order", "profiles"], "$");
-  const { order, profiles } = orderAndProfiles(root.order, root.profiles, LEGACY_ROLES);
+  const { order, profiles } = orderAndProfiles(root.order, root.profiles, legacyProfile);
   const active = name(root.active, "$.active");
   if (!Object.hasOwn(profiles, active)) fail("$.active", "unknown profile");
   if (order.length !== 3) fail("$.profiles", "legacy migration requires exactly three recognizable profiles");

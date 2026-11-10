@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { harness } from "./harness.ts";
 import { parseConfig } from "../src/config.ts";
 
@@ -40,9 +43,13 @@ test("edit a role and the orchestrator in one draft", async () => {
 
 test("remove a role; the orchestrator cannot be removed without a default", async () => {
   const h = harness();
-  h.script("balanced", "Edit", "reviewer", "Remove", "Orchestrator", "Remove", "Discard", true, "Done");
+  h.script("balanced", "Edit", "reviewer", "Remove", "Orchestrator", undefined, "Discard", true, "Done");
   await h.command("manage");
-  assert.ok(h.notifications.some(text => /Profile error: scripted select "Remove" not in \[Change model\/thinking\]/.test(text)));
+  assert.equal(h.scriptLeft(), 0);
+  const route = (title: string) => h.offered.find(entry => entry.title.startsWith(title))!.options;
+  assert.deepEqual(route("Orchestrator"), ["Change model/thinking"]);
+  assert.deepEqual(route("reviewer"), ["Change model/thinking", "Remove"]);
+  assert.equal(h.writes.length, 0);
   const second = harness();
   second.script("balanced", "Edit", "reviewer", "Remove", "Save", "Done");
   await second.command("manage");
@@ -52,9 +59,13 @@ test("remove a role; the orchestrator cannot be removed without a default", asyn
 
 test("set as default profile", async () => {
   const h = harness();
-  h.script("claude", "Set as default", "Done");
+  h.script("claude", "Set as default", true, "Done");
   await h.command("manage");
   assert.equal(saved(h).defaultProfile, "claude");
+  const declined = harness();
+  declined.script("claude", "Set as default", false, "Done");
+  await declined.command("manage");
+  assert.equal(declined.writes.length, 0);
 });
 
 test("delete a non-default profile", async () => {
@@ -119,19 +130,54 @@ test("saving while busy writes the file and tells the user to reload", async () 
   assert.ok(h.notifications.some(text => /saved but not applied.*parent busy.*\/hprofile reload/.test(text)));
 });
 
-test("a route that fails preflight blocks the write", async () => {
+test("a changed route that fails preflight blocks the write", async () => {
+  const h = harness();
+  h.script("balanced", "Edit", "reviewer", "Change", TERRA, "low", () => { h.models.splice(h.models.findIndex(m => `${m.provider}/${m.id}` === TERRA), 1); }, "Save", "Discard", true, "Done");
+  await h.command("manage");
+  assert.equal(h.writes.length, 0);
+  assert.ok(h.notifications.some(text => /Not saved: agents\.reviewer: Unavailable model: openai\/gpt-6.1-terra/.test(text)));
+});
+
+test("an untouched broken route does not block an unrelated save; reload names the profile", async () => {
   const h = harness();
   const broken = structuredClone(h.config);
   broken.profiles.codex.agents.archiver.model = "ghost/none";
   h.setText(JSON.stringify(broken));
-  h.script("codex", "Edit", "implementer", "Change", FLASH, "high", "Save", "Discard", true, "Done");
-  await h.command("manage");
-  assert.equal(h.writes.length, 0);
-  assert.ok(h.notifications.some(text => /Not saved: agents\.archiver: Unavailable model: ghost\/none/.test(text)));
-  // other profiles of the same file are still editable
-  h.script("balanced", "Edit", "reviewer", "Remove", "Save", "Done");
+  h.script("codex", "Edit", "implementer", "Change", FLASH, "high", "Save", "Done");
   await h.command("manage");
   assert.equal(h.writes.length, 1);
+  assert.deepEqual(saved(h).profiles.codex.agents.implementer, { model: FLASH, thinking: "high" });
+  assert.ok(!h.notifications.some(text => /^Not saved/.test(text)));
+  assert.ok(h.notifications.some(text => /saved but not applied \(profiles\.codex: agents\.archiver: Unavailable model: ghost\/none/.test(text)));
+});
+
+test("activation failure of the edited selected profile is reported as saved but not applied", async () => {
+  const h = harness();
+  await h.emit("session_start");
+  h.failModel("claude-opus-5-5");
+  h.script("balanced", "Edit", "Orchestrator", "Change", OPUS, "medium", "Save", "Done");
+  await h.command("manage");
+  assert.equal(h.writes.length, 1);
+  assert.ok(h.notifications.some(text => /Configuration saved but not applied \(.*\/hprofile reload/.test(text)));
+  assert.ok(!h.notifications.some(text => /^Configuration saved$/.test(text)));
+  assert.match(h.statuses.at(-1)!, /profile: balanced/);
+});
+
+test("a file changed on disk since the menu was read is never overwritten", async () => {
+  const h = harness();
+  const other = structuredClone(h.config);
+  other.profiles.claude.agents.reviewer.thinking = "low";
+  const external = JSON.stringify(other);
+  h.script("balanced", "Edit", "reviewer", "Remove", () => h.setText(external), "Save", "Discard", true, "Done");
+  await h.command("manage");
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.text(), external);
+  assert.ok(h.notifications.some(text => /profile-cycler\.json changed on disk; reopen \/hprofile manage/.test(text)));
+  const del = harness();
+  del.script("claude", "Delete", () => del.setText(external), true, "Done");
+  await del.command("manage");
+  assert.equal(del.writes.length, 0);
+  assert.ok(del.notifications.some(text => /changed on disk/.test(text)));
 });
 
 test("a failing writer reports the error and keeps the draft open", async () => {
@@ -190,4 +236,34 @@ test("manage needs the interactive TUI", async () => {
   assert.match(h.notifications.at(-1)!, /interactive TUI/);
   assert.equal(h.scriptLeft(), 1);
   assert.equal(h.writes.length, 0);
+});
+
+test("discovered roles with names the schema rejects are not offered and are counted as unreadable", async () => {
+  const h = harness();
+  const role = (name: string) => ({ name, source: "user" as const, filePath: `/a/${name}.md`, description: "d" });
+  h.setDiscovery({ roles: [role("Bad Name"), role("scout")], diagnostics: [] });
+  h.script("balanced", "Edit", "Discard", "Done");
+  await h.command("manage");
+  const options = h.offered.find(entry => entry.title.startsWith("Edit balanced"))!.options;
+  assert.ok(options.some(option => option.startsWith("scout:")));
+  assert.ok(!options.some(option => option.startsWith("Bad Name")));
+  assert.ok(h.notifications.some(text => /^1 agent file/.test(text)));
+});
+
+test("the default save path writes the real file and its .bak under PI_CODING_AGENT_DIR", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hprofile-manage-"));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = dir;
+  try {
+    const original = readFileSync(new URL("../examples/profile-cycler.json", import.meta.url), "utf8");
+    writeFileSync(join(dir, "profile-cycler.json"), original);
+    const h = harness({ realStore: true });
+    h.script("balanced", "Edit", "reviewer", "Remove", "Save", "Done");
+    await h.command("manage");
+    assert.equal(readFileSync(join(dir, "profile-cycler.json.bak"), "utf8"), original);
+    assert.equal(parseConfig(readFileSync(join(dir, "profile-cycler.json"), "utf8")).profiles.balanced.agents.reviewer, undefined);
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

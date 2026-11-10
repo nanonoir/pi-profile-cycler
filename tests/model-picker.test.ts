@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
-import { filterModels, modelRow, pickModel, visibleWindow } from "../src/model-picker.ts";
+import { fuzzyFilter, KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
+import { filterModels as filter, modelRow, pickModel, visibleWindow } from "../src/model-picker.ts";
 import type { RegisteredModel } from "../src/switching.ts";
 
 const make = (provider: string, id: string) => ({ provider, id }) as RegisteredModel;
@@ -10,6 +10,7 @@ const models = [make("anthropic", "claude-opus-4"), make("anthropic", "claude-so
 const options = { title: "Pick", models, current: "openai/gpt-5" };
 const theme = { fg: (_color: string, text: string) => text };
 const keys = new KeybindingsManager(TUI_KEYBINDINGS);
+const filterModels = (list: RegisteredModel[], query: string, current?: string) => filter(list, query, current, fuzzyFilter);
 const labels = (list: RegisteredModel[]) => list.map(m => `${m.provider}/${m.id}`);
 
 /** ctx whose custom() builds the component with fakes and feeds it keys; `selectAnswer` serves the fallback. */
@@ -84,4 +85,9 @@ test("falls back to plain select when custom is missing or throws", async () => 
 
 test("without UI nothing is picked", async () => {
   assert.equal(await pickModel({ hasUI: false, ui: {} } as unknown as ExtensionContext, options), undefined);
+});
+
+test("falls back to plain select when pi-tui cannot be loaded", async () => {
+  const { ctx } = fakeCtx(["\r"]);
+  assert.deepEqual(await pickModel(ctx, options, () => Promise.reject(new Error("module not found"))), models[3]);
 });
