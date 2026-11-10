@@ -1,5 +1,6 @@
 import { isRecord } from "./routing.ts";
 
+// Persisted in session files: keep the original id so existing sessions still restore their profile.
 export const ENTRY_TYPE = "pi-agents-profile-cycler";
 export interface Selection {
   version: 1;

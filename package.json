@@ -1,6 +1,6 @@
 {
-  "name": "pi-agents-profile-cycler",
-  "version": "1.0.0",
+  "name": "pi-profile-cycler",
+  "version": "1.1.0",
   "description": "Session-local model profiles for Pi and direct mavam/pi-agents spawns",
   "engines": { "node": ">=24" },
   "private": true,
