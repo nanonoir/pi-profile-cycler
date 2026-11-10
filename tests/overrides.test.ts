@@ -85,7 +85,7 @@ test("default-only profile switches the parent to default and routes unconfigure
   assert.match(notice, /Unconfigured and unknown roles use the default/);
   const input = { agents: [{ name: "teacher" }, { name: "reviewer", model: "user/m" }] };
   await h.emit("tool_call", { toolName: "agent_spawn", input });
-  assert.deepEqual(input.agents, [{ name: "teacher", model: "claude-code/claude-opus-5-5", thinking: "medium" }, { name: "reviewer", model: "user/m", thinking: "high" }]);
+  assert.deepEqual(input.agents, [{ name: "teacher", model: "claude-code/claude-opus-5-5", thinking: "medium" }, { name: "reviewer", model: "user/m" }]);
   await h.command("balanced"); await h.command("status");
   assert.match(h.notifications.at(-1)!, /\[from main\][\s\S]*use native routing/);
 });

@@ -15,7 +15,11 @@ export function roleFor(agent: Record<string, unknown>, routes: Record<string, S
 
 const explicit = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
 
-/** Pure, atomic patch (explicit-wins): role route, else `fallback` (profile default), fills model/thinking only where the request omits them. */
+/**
+ * Pure, atomic patch (explicit-wins): role route, else `fallback` (profile default), fills model/thinking only where
+ * the request omits them. An explicit model without explicit thinking gets no injected thinking: the route's level
+ * was chosen for the route's model, so mavam's own resolution decides instead.
+ */
 export function routeSpawn(input: unknown, routes: Record<string, SpawnRoute>, fallback?: SpawnRoute): Record<string, unknown> {
   if (!isRecord(input) || !Array.isArray(input.agents)) {
     throw new Error("agent_spawn.agents must be an array (incompatible runtime input)");
@@ -24,12 +28,8 @@ export function routeSpawn(input: unknown, routes: Record<string, SpawnRoute>, f
     if (!isRecord(agent)) throw new Error(`agent_spawn.agents[${index}] must be an object`);
     const role = roleFor(agent, routes);
     const source = role ? routes[role] : fallback;
-    if (!source) return { ...agent };
-    return {
-      ...agent,
-      model: explicit(agent.model) ? agent.model : source.model,
-      thinking: explicit(agent.thinking) ? agent.thinking : source.thinking,
-    };
+    if (!source || explicit(agent.model)) return { ...agent };
+    return { ...agent, model: source.model, thinking: explicit(agent.thinking) ? agent.thinking : source.thinking };
   });
   return { ...input, agents };
 }

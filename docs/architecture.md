@@ -21,7 +21,7 @@ Importing does not register or read configuration. Calling the default export re
 
 ## Profiles and precedence
 
-A profile may define `default`, `main` and any `agents` roles; it must define `main` or `default`. The orchestrator uses `main`, else `default`. For each direct spawn and each field (`model`, `thinking`): explicit request value → profile role route → profile `default` → native mavam (nothing injected). With a `default`, every direct subagent is routed, including roles that are not configured or not discovered.
+A profile may define `default`, `main` and any `agents` roles; it must define `main` or `default`. The orchestrator uses `main`, else `default`. For each direct spawn and each field (`model`, `thinking`): explicit request value → profile role route → profile `default` → native mavam (nothing injected). An explicit `model` without explicit `thinking` gets no injected thinking, since the route's level was chosen for another model; mavam resolves it (owner decision 2026-11-10). With a `default`, every direct subagent is routed, including roles that are not configured or not discovered.
 
 ## Profile editor
 

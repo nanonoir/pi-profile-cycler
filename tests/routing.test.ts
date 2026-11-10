@@ -20,7 +20,7 @@ test("explicit-wins routes a graph and preserves all other arguments without mut
   assert.deepEqual(output, { ...input, agents: [
     input.agents[0],
     { ...input.agents[1], ...routes.reviewer },
-    { ...input.agents[2], thinking: "medium" },
+    input.agents[2],
     { ...input.agents[3], model: "provider/model" },
     { ...input.agents[4], ...routes.reviewer },
     input.agents[5], input.agents[6],
@@ -35,7 +35,7 @@ test("malformed batches fail atomically and inherited role names never match", (
   assert.deepEqual(routeSpawn({ agents: [{ name: "constructor" }] }, routes), { agents: [{ name: "constructor" }] });
 });
 
-test("precedence per field: explicit > role > default > native", () => {
+test("precedence per field: explicit > role > default > native; an explicit model gets no injected thinking", () => {
   const fallback = { model: "def/model", thinking: "off" };
   const input = { agents: [
     { name: "implementer", model: "user/model" },
@@ -46,7 +46,7 @@ test("precedence per field: explicit > role > default > native", () => {
   ] };
   const out = routeSpawn(input, routes, fallback).agents as Array<Record<string, unknown>>;
   assert.deepEqual(out.map(a => [a.model, a.thinking]), [
-    ["user/model", "medium"], ["provider/model", "xhigh"], ["def/model", "off"], ["user/model", "off"], ["def/model", "off"],
+    ["user/model", undefined], ["provider/model", "xhigh"], ["def/model", "off"], ["user/model", " "], ["def/model", "off"],
   ]);
   const native = routeSpawn(input, routes).agents as Array<Record<string, unknown>>;
   assert.deepEqual(native[2], input.agents[2]);
