@@ -38,13 +38,33 @@ Alt+M   balanced  →  claude  →  codex  →  balanced …
 
 ## 🚀 Quick start
 
-Requires Pi 1.5.x with `pi-subagents` (verified against 0.87.0). Upgrading from 1.1 or earlier? Support for `mavam/pi-agents` was removed in 1.2.0; your `profile-cycler.json` keeps working unchanged.
+**Requirements:** Pi 1.5.x (the only line this release is verified against), `pi-subagents` (verified against 0.87.0) and Node.js 24 or newer. Pi supplies its own SDK packages to extensions, so nothing else needs to be installed. Upgrading from 1.1 or earlier? Support for `mavam/pi-agents` was removed in 1.2.0; your `profile-cycler.json` keeps working unchanged.
 
 **1. Install**
+
+Recommended, from npm:
+
+```sh
+pi install npm:pi-profile-cycler
+```
+
+See the [npm package page](https://www.npmjs.com/package/pi-profile-cycler) and the official [Pi package system](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md) for installation scopes and discovery.
+
+Alternatively, from GitHub:
 
 ```sh
 pi install git:github.com/nanonoir/pi-profile-cycler
 ```
+
+Update, list and remove (use the same source you installed from):
+
+```sh
+pi list
+pi update npm:pi-profile-cycler    # or: pi update --extensions  (all packages)
+pi remove npm:pi-profile-cycler
+```
+
+`pi update` without a target updates Pi itself, not packages. A version-pinned source such as `npm:pi-profile-cycler@1.2.0` or a git tag stays pinned across updates. Removing the package does not delete your `profile-cycler.json`.
 
 **2. Create your first profile**: open Pi and run `/hprofile manage` → **+ New profile** → pick a default model → **Save**. It is activated right away.
 
@@ -150,7 +170,7 @@ The role is the agent name you launch, matched by its name, local name, alias or
 npm ci && npm test && npm run typecheck
 ```
 
-[Architecture](docs/architecture.md) · [Compatibility](docs/compatibility.md) · [Manual testing](docs/manual-testing.md) · [PRD](docs/pi-agents-profile-cycler.md)
+[Architecture](docs/architecture.md) · [Compatibility](docs/compatibility.md) · [Manual testing](docs/manual-testing.md) · [Publishing](docs/publishing.md) · [PRD](docs/pi-agents-profile-cycler.md)
 
 ---
 

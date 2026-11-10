@@ -9,7 +9,7 @@ Direct `subagent` launch routing is supported by the inspected pi-subagents 0.87
 | Pi coding-agent 1.5.1 | `4ea8837927564c592b1d184c956ab7d28c88119b` |
 | pi-subagents 0.87.0 (npm) | installed package source, paths below relative to its root (no git revision recorded) |
 
-The published Pi **1.5.0** SDK and its pi-agent-core/pi-ai 1.5.0 dependencies were also installed as repository-local development dependencies and inspected. Its `dist/core/agent-session.js` lines 339–351 pass the validated argument object to events; `pi-agent-core/dist/agent-loop.js` lines 496–503, 532–536 and 574–580 execute that same object. `dist/core/extensions/types.d.ts` lines 997–1002 explicitly promise mutable input. This supports the declared Pi `^1.5.0` peer range; no older compatibility is asserted. The local Pi CLI reports 1.5.0, but the user's installed providers/model IDs and pi-subagents runtime have not been certified.
+The published Pi **1.5.0** SDK and its pi-agent-core/pi-ai 1.5.0 dependencies were also installed as repository-local development dependencies and inspected. Its `dist/core/agent-session.js` lines 339–351 pass the validated argument object to events; `pi-agent-core/dist/agent-loop.js` lines 496–503, 532–536 and 574–580 execute that same object. `dist/core/extensions/types.d.ts` lines 997–1002 explicitly promise mutable input. The package declares the Pi SDK packages as `"*"` peer dependencies, as Pi's package documentation requires for host-provided packages; that range is not a compatibility claim. Supported and verified Pi is **1.5.x only** (this evidence); no other line is asserted. The local Pi CLI reports 1.5.0, but the user's installed providers/model IDs and pi-subagents runtime have not been certified.
 
 ## Direct calls
 

@@ -2,10 +2,24 @@
   "name": "pi-profile-cycler",
   "version": "1.2.0",
   "description": "Session-local model profiles for Pi and the pi-subagents subagent tool",
+  "keywords": ["pi-package", "pi", "pi-extension", "pi-subagents", "model-profiles"],
+  "homepage": "https://github.com/nanonoir/pi-profile-cycler#readme",
+  "bugs": { "url": "https://github.com/nanonoir/pi-profile-cycler/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/nanonoir/pi-profile-cycler.git" },
+  "author": "Nahuel Nicolas Noir (https://github.com/nanonoir)",
   "engines": { "node": ">=24" },
-  "private": true,
   "license": "MIT",
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
   "type": "module",
+  "files": [
+    "pi-profile-cycler.ts",
+    "src",
+    "examples",
+    "images",
+    "docs/*.md",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
@@ -16,9 +30,9 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "^1.5.0",
-    "@earendil-works/pi-coding-agent": "^1.5.0",
-    "@earendil-works/pi-tui": "^1.5.0"
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.5.0",
