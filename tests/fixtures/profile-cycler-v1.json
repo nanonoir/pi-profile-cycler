@@ -1,0 +1,33 @@
+{
+  "active": "balanced",
+  "order": ["balanced", "codex-low", "claude-low"],
+  "profiles": {
+    "balanced": {
+      "main": { "model": "openai-codex/gpt-6.1-sol", "thinking": "medium" },
+      "agents": {
+        "specs-writer": { "model": "openai-codex/gpt-6.1-terra", "thinking": "high" },
+        "designer": { "model": "openai-codex/gpt-6.1-sol", "thinking": "medium" },
+        "implementer": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" },
+        "fix-agent": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" }
+      }
+    },
+    "codex-low": {
+      "main": { "model": "claude-code/claude-opus-5-5", "thinking": "medium" },
+      "agents": {
+        "specs-writer": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" },
+        "designer": { "model": "claude-code/claude-opus-5-5", "thinking": "medium" },
+        "implementer": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" },
+        "fix-agent": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" }
+      }
+    },
+    "claude-low": {
+      "main": { "model": "openai-codex/gpt-6.1-sol", "thinking": "low" },
+      "agents": {
+        "specs-writer": { "model": "openai-codex/gpt-6.1-terra", "thinking": "high" },
+        "designer": { "model": "openai-codex/gpt-6.1-sol", "thinking": "medium" },
+        "implementer": { "model": "openai-codex/gpt-6.1-terra", "thinking": "medium" },
+        "fix-agent": { "model": "openai-codex/gpt-6.1-terra", "thinking": "medium" }
+      }
+    }
+  }
+}

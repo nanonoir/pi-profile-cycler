@@ -1,0 +1,31 @@
+{
+  "name": "pi-agents-profile-cycler",
+  "version": "1.0.0",
+  "description": "Session-local model profiles for Pi and direct mavam/pi-agents spawns",
+  "engines": { "node": ">=24" },
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": [
+      "./pi-profile-cycler.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "^1.5.0",
+    "@earendil-works/pi-coding-agent": "^1.5.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@types/node": "^24.0.0",
+    "jiti": "2.7.0",
+    "pi-agents": "0.39.0",
+    "typescript": "^5.9.0"
+  }
+}
