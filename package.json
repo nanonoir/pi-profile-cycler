@@ -17,12 +17,14 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^1.5.0",
-    "@earendil-works/pi-coding-agent": "^1.5.0"
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@earendil-works/pi-tui": "^1.5.0"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "1.5.0",
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
     "@types/node": "^24.0.0",
     "jiti": "2.7.0",
     "pi-agents": "0.39.0",
