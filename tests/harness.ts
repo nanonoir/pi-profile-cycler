@@ -9,7 +9,7 @@ type Handler = (event: FakeEvent, ctx: ExtensionContext) => Promise<unknown>;
 export function harness() {
   let text = readFileSync(new URL("../examples/profile-cycler.json", import.meta.url), "utf8");
   const config = parseConfig(text);
-  const ids = [...new Set(Object.values(config.profiles).flatMap(p => [p.main.model, ...Object.values(p.agents).map(r => r.model)]))];
+  const ids = [...new Set(Object.values(config.profiles).flatMap(p => [p.main!.model, ...Object.values(p.agents).map(r => r.model)]))];
   const models = ids.map(id => ({ provider: id.slice(0, id.indexOf("/")), id: id.slice(id.indexOf("/") + 1), reasoning: true }) as RegisteredModel);
   let model = models[0];
   let thinking: ThinkingLevel = "medium";

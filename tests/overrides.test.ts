@@ -61,11 +61,31 @@ test("additional profiles work, but command names cannot shadow selectable profi
   const config = structuredClone(h.config);
   config.profiles.custom = config.profiles.balanced;
   config.order.push("custom");
-  assert.equal(validateConfig(config).profiles.custom.main.model, config.profiles.balanced.main.model);
-  for (const name of ["next", "status", "reload"]) {
+  assert.equal(validateConfig(config).profiles.custom.main!.model, config.profiles.balanced.main!.model);
+  for (const name of ["next", "status", "reload", "manage"]) {
     const invalid = structuredClone(h.config);
     invalid.profiles[name] = invalid.profiles.balanced;
     invalid.order.push(name);
     assert.throws(() => validateConfig(invalid), /reserved command name/);
   }
+});
+
+test("default-only profile switches the parent to default and routes unconfigured agents", async () => {
+  const h = harness();
+  const config = structuredClone(h.config);
+  config.profiles.solo = { default: { model: "claude-code/claude-opus-5-5", thinking: "medium" }, agents: { reviewer: { model: "antigravity/gemini-3-8-flash", thinking: "high" } } };
+  config.order.push("solo");
+  h.setText(JSON.stringify(config)); await h.emit("session_start");
+  await h.command("solo");
+  await h.command("status");
+  const notice = h.notifications.at(-1)!;
+  assert.match(notice, /Configured parent: claude-code\/claude-opus-5-5 \(medium\) \[from default\]/);
+  assert.match(notice, /default: claude-code\/claude-opus-5-5 \(medium\)/);
+  assert.match(notice, /reviewer: antigravity\/gemini-3-8-flash \(high\)/);
+  assert.match(notice, /Unconfigured and unknown roles use the default/);
+  const input = { agents: [{ name: "teacher" }, { name: "reviewer", model: "user/m" }] };
+  await h.emit("tool_call", { toolName: "agent_spawn", input });
+  assert.deepEqual(input.agents, [{ name: "teacher", model: "claude-code/claude-opus-5-5", thinking: "medium" }, { name: "reviewer", model: "user/m", thinking: "high" }]);
+  await h.command("balanced"); await h.command("status");
+  assert.match(h.notifications.at(-1)!, /\[from main\][\s\S]*use native routing/);
 });

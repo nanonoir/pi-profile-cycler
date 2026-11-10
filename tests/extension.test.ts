@@ -184,7 +184,7 @@ test("busy tree reconcile whose parent apply fails clears the early route and bl
   fresh.setBranch([]); fresh.setIdle(false);
   await fresh.emit("session_tree");
   assert.match(fresh.statuses.at(-1)!, /profile: balanced \(pending: balanced\)/);
-  fresh.failModel(fresh.config.profiles.balanced.main.model.split("/")[1]); await fresh.emit("before_agent_start");
+  fresh.failModel(fresh.config.profiles.balanced.main!.model.split("/")[1]); await fresh.emit("before_agent_start");
   await blocked(fresh);
   assert.equal(fresh.branch().length, 0, "unapplied default is never pinned");
 });

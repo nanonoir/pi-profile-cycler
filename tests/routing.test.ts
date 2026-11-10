@@ -34,3 +34,21 @@ test("malformed batches fail atomically and inherited role names never match", (
   assert.deepEqual(input, { agents: [{ name: "implementer" }, null] });
   assert.deepEqual(routeSpawn({ agents: [{ name: "constructor" }] }, routes), { agents: [{ name: "constructor" }] });
 });
+
+test("precedence per field: explicit > role > default > native", () => {
+  const fallback = { model: "def/model", thinking: "off" };
+  const input = { agents: [
+    { name: "implementer", model: "user/model" },
+    { name: "implementer", thinking: "xhigh" },
+    { name: "teacher", job: "unconfigured" },
+    { name: "teacher", model: "user/model", thinking: " " },
+    { profile: "unknown", name: "implementer" },
+  ] };
+  const out = routeSpawn(input, routes, fallback).agents as Array<Record<string, unknown>>;
+  assert.deepEqual(out.map(a => [a.model, a.thinking]), [
+    ["user/model", "medium"], ["provider/model", "xhigh"], ["def/model", "off"], ["user/model", "off"], ["def/model", "off"],
+  ]);
+  const native = routeSpawn(input, routes).agents as Array<Record<string, unknown>>;
+  assert.deepEqual(native[2], input.agents[2]);
+  assert.deepEqual(native[4], input.agents[4]);
+});

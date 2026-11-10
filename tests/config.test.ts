@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { migrateLegacyJson, parseConfig, parseJson, validateConfig, THINKING_LEVELS } from "../src/config.ts";
+import { migrateLegacyJson, parentRoute, parseConfig, parseJson, validateConfig, THINKING_LEVELS } from "../src/config.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const example = () => JSON.parse(read("../examples/profile-cycler.json"));
@@ -20,7 +20,6 @@ test("strict errors identify fields", () => {
   const cases: Array<[string, (value: ReturnType<typeof example>) => void, RegExp]> = [
     ["version", v => { v.version = 1; }, /\$\.version/],
     ["unexpected", v => { v.profiles.balanced.main.extra = 1; }, /\$\.profiles\.balanced\.main\.extra/],
-    ["missing", v => { delete v.profiles.claude.agents.reviewer; }, /\$\.profiles\.claude\.agents\.reviewer/],
     ["model", v => { v.profiles.codex.main.model = "bad/"; }, /\$\.profiles\.codex\.main\.model/],
     ["thinking", v => { v.profiles.codex.main.thinking = "maximum"; }, /\$\.profiles\.codex\.main\.thinking/],
     ["default", v => { v.defaultProfile = "missing"; }, /\$\.defaultProfile/],
@@ -50,4 +49,21 @@ test("migration uses content, keeps custom roles and rejects ambiguous profiles"
   assert.deepEqual(migrateLegacyJson(JSON.stringify(legacy)).order, ["balanced", "codex", "claude"]);
   legacy.profiles["codex-low"].main.model = "unknown/model";
   assert.throws(() => migrateLegacyJson(JSON.stringify(legacy)), /\$\.profiles\.codex-low: ambiguous/);
+});
+
+test("roles, main and default are optional, but a profile needs main or default", () => {
+  const route = { model: "p/m", thinking: "low" };
+  const build = (profile: unknown) => ({ version: 2, defaultProfile: "a", order: ["a"], profiles: { a: profile } });
+  const only = validateConfig(build({ default: route }));
+  assert.deepEqual(only.profiles.a.default, route);
+  assert.deepEqual(Object.keys(only.profiles.a.agents), []);
+  assert.doesNotThrow(() => { const v = example(); delete v.profiles.claude.agents.reviewer; validateConfig(v); });
+  assert.deepEqual(parentRoute(only.profiles.a), { route, source: "default" });
+  assert.deepEqual(parentRoute(validateConfig(build({ main: route, default: { ...route, model: "p/d" } })).profiles.a), { route, source: "main" });
+  assert.equal(validateConfig(build({ main: route, agents: { custom: route } })).profiles.a.agents.custom.model, "p/m");
+  assert.throws(() => validateConfig(build({ agents: {} })), /\$\.profiles\.a\.main: profile must define main or default/);
+  assert.throws(() => validateConfig(build({ default: { model: "bad", thinking: "low" } })), /\$\.profiles\.a\.default\.model/);
+  assert.throws(() => validateConfig(build({ default: route, extra: 1 })), /\$\.profiles\.a\.extra/);
+  assert.throws(() => validateConfig(build({ default: { ...route, x: 1 } })), /\$\.profiles\.a\.default\.x/);
+  assert.throws(() => parseConfig('{"version":2,"defaultProfile":"a","order":["a"],"profiles":{"a":{"default":{"model":"p/m","thinking":"low"},"default":{"model":"p/m","thinking":"low"}}}}'), /duplicate JSON key/);
 });

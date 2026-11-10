@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { parseConfig, type Config } from "./config.ts";
+import { parentRoute, parseConfig, type Config } from "./config.ts";
 import { routeSpawn } from "./routing.ts";
 import { ENTRY_TYPE, restoreSelection } from "./state.ts";
 import { message, preflight, switchProfile } from "./switching.ts";
@@ -199,8 +199,12 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
         if (choice === "status") {
           const actual = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "none";
           const profile = selected && config ? config.profiles[selected] : undefined;
-          const routes = profile ? Object.entries(profile.agents).map(([role, route]) => `  ${role}: ${route.model} (${route.thinking})`).join("\n") : "  unavailable (direct spawns blocked)";
-          ctx.ui.notify(`Selected: ${selected ?? "unavailable"}${pending ? `; pending: ${pending}` : ""}\nEffective parent: ${actual} (${pi.getThinkingLevel()})\nConfigured parent: ${profile ? `${profile.main.model} (${profile.main.thinking})` : "unavailable"}\nNext direct spawns (explicit model/thinking in the request wins; otherwise):\n${routes}\nExisting agents keep their routes. Unknown roles use native routing. Nested helpers unsupported.`, "info");
+          const fmt = (route: { model: string; thinking: string }) => `${route.model} (${route.thinking})`;
+          const parent = profile ? parentRoute(profile) : undefined;
+          const roles = profile ? Object.entries(profile.agents).map(([role, route]) => `  ${role}: ${fmt(route)}`).join("\n") : "";
+          const routes = profile ? `${profile.default ? `  default: ${fmt(profile.default)}\n` : ""}${roles || "  (no roles configured)"}` : "  unavailable (direct spawns blocked)";
+          const fallback = profile?.default ? "the default" : "native routing";
+          ctx.ui.notify(`Selected: ${selected ?? "unavailable"}${pending ? `; pending: ${pending}` : ""}\nEffective parent: ${actual} (${pi.getThinkingLevel()})\nConfigured parent: ${parent ? `${fmt(parent.route)} [from ${parent.source}]` : "unavailable"}\nNext direct spawns (explicit model/thinking in the request wins; otherwise):\n${routes}\nExisting agents keep their routes. Unconfigured and unknown roles use ${fallback}. Nested helpers unsupported.`, "info");
           return;
         }
         if (choice === "next") return await next(ctx);
@@ -243,7 +247,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
       if (!config || !selected) throw new Error("No activated routing profile; choose /hprofile <name>");
       const profile = config.profiles[selected];
       preflight(profile, ctx);
-      const routed = routeSpawn(event.input, profile.agents);
+      const routed = routeSpawn(event.input, profile.agents, profile.default);
       // Pi executes the original input object: mutate its property, not event.input itself.
       event.input.agents = routed.agents;
     } catch (error) { return { block: true, reason: `Profile routing blocked: ${message(error)}` }; }

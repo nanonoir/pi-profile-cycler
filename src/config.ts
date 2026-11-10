@@ -6,7 +6,14 @@ const LEGACY_ROLES = REQUIRED_ROLES.slice(0, 4);
 const NAME = /^[a-z0-9][a-z0-9_-]*$/;
 
 export interface Route { model: string; thinking: ThinkingLevel }
-export interface Profile { main: Route; agents: Record<string, Route> }
+export interface Profile { default?: Route; main?: Route; agents: Record<string, Route> }
+export type ParentSource = "main" | "default";
+/** Orchestrator route: `main`, else `default`; validated profiles always have one. */
+export function parentRoute(profile: Profile): { route: Route; source: ParentSource } {
+  if (profile.main) return { route: profile.main, source: "main" };
+  if (profile.default) return { route: profile.default, source: "default" };
+  throw new Error("profile defines neither main nor default");
+}
 export interface Config { version: 2; defaultProfile: string; order: string[]; profiles: Record<string, Profile> }
 
 function fail(path: string, message: string): never { throw new Error(`${path}: ${message}`); }
@@ -14,8 +21,8 @@ function object(value: unknown, path: string): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return fail(path, "expected object");
   return value as Record<string, unknown>;
 }
-function fields(value: Record<string, unknown>, keys: readonly string[], path: string): void {
-  for (const key of Object.keys(value)) if (!keys.includes(key)) fail(`${path}.${key}`, "unexpected field");
+function fields(value: Record<string, unknown>, keys: readonly string[], path: string, optional: readonly string[] = []): void {
+  for (const key of Object.keys(value)) if (!keys.includes(key) && !optional.includes(key)) fail(`${path}.${key}`, "unexpected field");
   for (const key of keys) if (!Object.hasOwn(value, key)) fail(`${path}.${key}`, "required field missing");
 }
 function name(value: unknown, path: string): string {
@@ -29,22 +36,27 @@ function route(value: unknown, path: string): Route {
   return { model: entry.model as string, thinking: entry.thinking as ThinkingLevel };
 }
 function profile(value: unknown, path: string, required: readonly string[]): Profile {
-  const entry = object(value, path); fields(entry, ["main", "agents"], path);
-  const rawAgents = object(entry.agents, `${path}.agents`);
+  const entry = object(value, path);
+  if (required.length) fields(entry, ["main", "agents"], path); else fields(entry, [], path, ["default", "main", "agents"]);
+  if (!required.length && !Object.hasOwn(entry, "main") && !Object.hasOwn(entry, "default")) fail(`${path}.main`, "profile must define main or default");
+  const rawAgents = Object.hasOwn(entry, "agents") ? object(entry.agents, `${path}.agents`) : {};
   const agents: Record<string, Route> = Object.create(null);
   for (const [key, value] of Object.entries(rawAgents)) {
     name(key, `${path}.agents.${key}`);
     agents[key] = route(value, `${path}.agents.${key}`);
   }
   for (const role of required) if (!Object.hasOwn(agents, role)) fail(`${path}.agents.${role}`, "required role missing");
-  return { main: route(entry.main, `${path}.main`), agents };
+  const result: Profile = { agents };
+  if (Object.hasOwn(entry, "default")) result.default = route(entry.default, `${path}.default`);
+  if (Object.hasOwn(entry, "main")) result.main = route(entry.main, `${path}.main`);
+  return result;
 }
 function orderAndProfiles(rawOrder: unknown, rawProfiles: unknown, required: readonly string[]): { order: string[]; profiles: Record<string, Profile> } {
   const source = object(rawProfiles, "$.profiles");
   const profiles: Record<string, Profile> = Object.create(null);
   for (const [key, value] of Object.entries(source)) {
     name(key, `$.profiles.${key}`);
-    if (["next", "status", "reload"].includes(key)) fail(`$.profiles.${key}`, "reserved command name");
+    if (["next", "status", "reload", "manage"].includes(key)) fail(`$.profiles.${key}`, "reserved command name");
     profiles[key] = profile(value, `$.profiles.${key}`, required);
   }
   if (!Array.isArray(rawOrder) || rawOrder.length === 0) fail("$.order", "expected nonempty array");
@@ -61,7 +73,7 @@ function orderAndProfiles(rawOrder: unknown, rawProfiles: unknown, required: rea
 export function validateConfig(value: unknown): Config {
   const root = object(value, "$"); fields(root, ["version", "defaultProfile", "order", "profiles"], "$");
   if (root.version !== 2) fail("$.version", "expected 2");
-  const { order, profiles } = orderAndProfiles(root.order, root.profiles, REQUIRED_ROLES);
+  const { order, profiles } = orderAndProfiles(root.order, root.profiles, []);
   const defaultProfile = name(root.defaultProfile, "$.defaultProfile");
   if (!Object.hasOwn(profiles, defaultProfile)) fail("$.defaultProfile", "unknown profile");
   return { version: 2, defaultProfile, order, profiles };
@@ -126,7 +138,7 @@ export function migrateLegacy(value: unknown): Config {
   const mapping: Record<string, string> = Object.create(null);
   for (const oldName of order) {
     const item = profiles[oldName];
-    const models = [item.main.model, ...LEGACY_ROLES.map(role => item.agents[role].model)];
+    const models = [item.main!.model, ...LEGACY_ROLES.map(role => item.agents[role].model)];
     const match = Object.entries(signatures).filter(([, signature]) => signature.every((model, i) => model === models[i]));
     if (match.length !== 1) fail(`$.profiles.${oldName}`, "ambiguous or unrecognized legacy profile content");
     const target = match[0][0];
@@ -135,7 +147,7 @@ export function migrateLegacy(value: unknown): Config {
     const agents: Record<string, Route> = Object.create(null);
     for (const [role, route] of Object.entries(item.agents)) agents[role] = fixRoute(route);
     for (const role of REQUIRED_ROLES.slice(4)) if (!Object.hasOwn(agents, role)) agents[role] = { model: FLASH, thinking: "high" };
-    migrated[target] = { main: fixRoute(item.main), agents };
+    migrated[target] = { main: fixRoute(item.main!), agents };
   }
   return validateConfig({ version: 2, defaultProfile: mapping[active], order: order.map(key => mapping[key]), profiles: migrated });
 }

@@ -39,7 +39,7 @@ test("published mavam resolver consumes direct single and graph routes without s
     mkdirSync(process.env.PI_CODING_AGENT_DIR, { recursive: true });
     const { harness } = await import("./harness.ts");
     const h = harness();
-    const nativeModel = h.config.profiles.balanced.main.model;
+    const nativeModel = h.config.profiles.balanced.main!.model;
     for (const role of ["implementer", "reviewer"]) {
       writeFileSync(join(profiles, `${role}.md`), `---\nname: ${role}\ndescription: Test profile\nmodel: ${nativeModel}\nthinking: low\ntools: [read, grep]\n---\nProject instructions for ${role}.\n`);
     }

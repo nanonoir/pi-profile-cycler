@@ -15,19 +15,20 @@ export function roleFor(agent: Record<string, unknown>, routes: Record<string, S
 
 const explicit = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
 
-/** Pure, atomic patch (explicit-wins): profile fills model/thinking only where the request omits them. */
-export function routeSpawn(input: unknown, routes: Record<string, SpawnRoute>): Record<string, unknown> {
+/** Pure, atomic patch (explicit-wins): role route, else `fallback` (profile default), fills model/thinking only where the request omits them. */
+export function routeSpawn(input: unknown, routes: Record<string, SpawnRoute>, fallback?: SpawnRoute): Record<string, unknown> {
   if (!isRecord(input) || !Array.isArray(input.agents)) {
     throw new Error("agent_spawn.agents must be an array (incompatible runtime input)");
   }
   const agents = input.agents.map((agent: unknown, index: number) => {
     if (!isRecord(agent)) throw new Error(`agent_spawn.agents[${index}] must be an object`);
     const role = roleFor(agent, routes);
-    if (!role) return { ...agent };
+    const source = role ? routes[role] : fallback;
+    if (!source) return { ...agent };
     return {
       ...agent,
-      model: explicit(agent.model) ? agent.model : routes[role].model,
-      thinking: explicit(agent.thinking) ? agent.thinking : routes[role].thinking,
+      model: explicit(agent.model) ? agent.model : source.model,
+      thinking: explicit(agent.thinking) ? agent.thinking : source.thinking,
     };
   });
   return { ...input, agents };

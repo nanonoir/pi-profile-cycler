@@ -1,6 +1,6 @@
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Profile, Route } from "./config.ts";
+import { parentRoute, type Profile, type Route } from "./config.ts";
 
 export type RegisteredModel = NonNullable<ReturnType<ExtensionContext["modelRegistry"]["find"]>>;
 
@@ -17,7 +17,11 @@ export function resolveRoute(route: Route, ctx: ExtensionContext): RegisteredMod
 }
 
 export function preflight(profile: Profile, ctx: ExtensionContext): RegisteredModel {
-  const model = resolveRoute(profile.main, ctx);
+  const model = resolveRoute(parentRoute(profile).route, ctx);
+  if (profile.default) {
+    try { resolveRoute(profile.default, ctx); }
+    catch (error) { throw new Error(`default: ${message(error)}`); }
+  }
   for (const [role, route] of Object.entries(profile.agents)) {
     try { resolveRoute(route, ctx); }
     catch (error) { throw new Error(`agents.${role}: ${message(error)}`); }
@@ -39,19 +43,20 @@ export async function switchProfile(
   currentModel: () => ExtensionContext["model"] = () => ctx.model,
 ): Promise<void> {
   const target = preflight(profile, ctx);
+  const parent = parentRoute(profile).route;
   const previousModel = currentModel();
   const previousThinking = pi.getThinkingLevel();
   if (!previousModel) throw new Error("No current parent model; cannot guarantee rollback. Select a model first.");
   let attempted = false;
   try {
     attempted = true;
-    if (!await pi.setModel(target)) throw new Error(`Authentication unavailable for ${profile.main.model}`);
-    pi.setThinkingLevel(profile.main.thinking);
-    if (pi.getThinkingLevel() !== profile.main.thinking) throw new Error("Pi clamped the requested thinking level");
+    if (!await pi.setModel(target)) throw new Error(`Authentication unavailable for ${parent.model}`);
+    pi.setThinkingLevel(parent.thinking);
+    if (pi.getThinkingLevel() !== parent.thinking) throw new Error("Pi clamped the requested thinking level");
     const effective = currentModel();
     if (!effective || effective.provider !== target.provider || effective.id !== target.id) {
       const actual = effective ? `${effective.provider}/${effective.id}` : "none";
-      throw new Error(`Pi did not retain the requested parent model (requested ${profile.main.model}, effective ${actual})`);
+      throw new Error(`Pi did not retain the requested parent model (requested ${parent.model}, effective ${actual})`);
     }
     commit();
   } catch (error) {
