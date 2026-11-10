@@ -1,16 +1,16 @@
-# Architecture — minimal direct-spawn routing
+# Architecture — minimal direct-launch routing
 
-The extension manages model routes, not orchestration. Pi owns the parent conversation and session history; mavam owns agent discovery, tools, instructions, graph execution and child lifetimes.
+The extension manages model routes, not orchestration. Pi owns the parent conversation and session history; pi-subagents owns agent discovery, tools, instructions, workflow execution and child lifetimes. The extension is inert inside pi-subagents child processes (`PI_SUBAGENT_CHILD=1`), so a child keeps the model pi-subagents resolved for it.
 
 ## Boundaries
 
 | Module | Responsibility |
 |---|---|
 | `config.ts` | Pure schema validation, duplicate-key detection, `parentRoute` (main, else default) and content-based legacy migration. |
-| `routing.ts` | Pure atomic batch transformation; only model/thinking change. |
+| `routing.ts` | Pure, non-mutating router for the `subagent` input: returns the `model` / `tasks` / `chain` patch; thinking travels as a `:level` suffix on `model`. |
 | `switching.ts` | Real registry and model-thinking preflight; parent switch/readback/rollback; commit only after success. |
 | `state.ts` | Last valid selection on the active branch; custom-entry format/version. |
-| `discovery.ts` | Read-only listing of user and trusted project agent Markdown, mirroring mavam 0.39.0 `discoverProfiles`. |
+| `discovery.ts` | Read-only listing of agent Markdown (builtin, user, trusted project) mirroring pi-subagents 0.87.0 discovery, including aliases, package-qualified names and external runners. |
 | `editing.ts` | Pure immutable profile operations (create, delete, set route, set default profile), each returning a validated config. |
 | `store.ts` | Stable serialization and the only file writer: validate, `.bak`, temp file, rename. |
 | `model-picker.ts` | Fuzzy-search model picker (`ctx.ui.custom` + pi-tui), plain `select` fallback. |
@@ -21,7 +21,7 @@ Importing does not register or read configuration. Calling the default export re
 
 ## Profiles and precedence
 
-A profile may define `default`, `main` and any `agents` roles; it must define `main` or `default`. The orchestrator uses `main`, else `default`. For each direct spawn and each field (`model`, `thinking`): explicit request value → profile role route → profile `default` → native mavam (nothing injected). An explicit `model` without explicit `thinking` gets no injected thinking, since the route's level was chosen for another model; mavam resolves it (owner decision 2026-11-10). With a `default`, every direct subagent is routed, including roles that are not configured or not discovered.
+A profile may define `default`, `main` and any `agents` roles; it must define `main` or `default`. The orchestrator uses `main`, else `default`. For each direct launch: explicit request `model` → profile role route → profile `default` → native pi-subagents resolution (nothing injected). An explicit `model`, with or without a `:level` suffix, is never touched and gets no injected thinking, since the route's level was chosen for another model (owner decision 2026-11-10). With a `default`, every direct subagent is routed, including roles that are not configured or not discovered, except agents whose runner is an external CLI/job adapter: their model is a CLI alias, so they never receive the `default` and a role route for one blocks the launch. Because a routed `model` takes precedence over `agentOverrides` and the agent's frontmatter in pi-subagents, a route overrides both for that role (owner decision 2026-11-10: the target runtime is pi-subagents, 2.0.0).
 
 ## Profile editor
 
@@ -41,7 +41,9 @@ Pi model changes themselves produce history entries. The cycler cannot erase fai
 
 ## Direct dispatch
 
-Only `tool_call` for exact tool name `agent_spawn` is intercepted. Compute the entire routed agents array before touching the original input. Then assign only its `agents` property in place, as required by the published SDK execution contract. Explicit request `model`/`thinking` win per field; configured roles, then the profile `default`, fill only omitted fields (owner decisions 2026-11-09 and 2026-11-10, replacing the PRD's initial `profile-wins`). Unknown `profile` never falls back to `name`; without a `default`, unknown roles use native mavam behavior. Failed preflight blocks the spawn without partial injection.
+Only `tool_call` for exact tool name `subagent` is intercepted, and only for launches: a top-level `agent` (direct launch), `tasks[]` items, `chain[]` steps and `chain[].parallel[]` items (the last two exist only when pi-subagents disables `workflow-scripts`). Workflow scripts (`workflow`), management `action`s and malformed input pass through untouched. The router computes a patch (`model`, `tasks`, `chain`) without mutating the input; the hook then assigns those properties onto the original input object in place, as required by the published SDK execution contract. The role is resolved through the discovery result (canonical name, local name, alias, package-qualified name; unresolved names are matched verbatim). An explicit request `model` wins; configured roles, then the profile `default`, fill only omitted models, injected as `<provider>/<id>:<thinking>` (owner decisions 2026-11-09 and 2026-11-10, replacing the PRD's initial `profile-wins`). Without a `default`, unknown roles use native pi-subagents resolution. Failed preflight blocks the launch without partial injection; with no config file, or for non-launch calls, nothing is guarded or injected.
+
+Discovery runs on every routed launch (small directory scans), so agent files added after startup are honored.
 
 ## Session identity and overrides
 
@@ -55,6 +57,6 @@ Each extension instance owns its selected/config/pending state. Session lifecycl
 
 Original v1 behavior was characterized before refactoring and preserved byte-for-byte in fixtures: global Markdown writes and shared `active`, inverted historical names, missing Gemini roles; `test-local.cjs` was absent. Runtime writes were removed, not wrapped; the later profile editor reintroduced a single, explicit write path limited to the cycler's own JSON.
 
-Published Pi SDK 1.5.0 tool execution and in-memory SessionManager are exercised without LLMs; extension tests use a mock API around those contracts. Actual mavam 0.39.0 spawn/helper resolvers are tested with disposable agent/project directories; its tool scheduler and real agent execution are not exercised. See [compatibility evidence](compatibility.md) for exact revisions and nested helper limitations. No claim of real provider or Windows TUI certification follows from these tests. The package is MIT-licensed and still marked private (not published to npm); publication and real smoke are separate gates.
+Published Pi SDK 1.5.0 tool execution and in-memory SessionManager are exercised without LLMs; extension tests use a mock API around those contracts. pi-subagents' input schema and agent discovery are mirrored, not imported: routing tests use fixtures citing the mirrored source lines, and discovery tests use disposable agent/project directories; pi-subagents itself and real agent execution are not exercised. See [compatibility evidence](compatibility.md) for exact revisions and nested helper limitations. No claim of real provider or Windows TUI certification follows from these tests. The package is MIT-licensed and still marked private (not published to npm); publication and real smoke are separate gates.
 
 The public pre-request hook does not reserve Pi's early prompt/auth/image preparation, nor can it veto the parent run on a failed pending switch. A request proceeds on the restored previous model with an explicit failure/cancellation notice. A hung SDK model change can hold this boundary indefinitely; imposing a competing forced rollback would introduce a worse race. These are documented SDK integration limits, not guarantees covered by mocks.

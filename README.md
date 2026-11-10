@@ -4,11 +4,11 @@
 
 **One keystroke to switch the model behind your orchestrator and every subagent.**
 
-A [Pi](https://github.com/earendil-works/pi) extension for [`mavam/pi-agents`](https://github.com/mavam/pi-agents)
+A [Pi](https://github.com/earendil-works/pi) extension for [`pi-subagents`](https://www.npmjs.com/package/pi-subagents)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Pi 1.5.x](https://img.shields.io/badge/Pi-1.5.x-8a2be2)
-![pi-agents](https://img.shields.io/badge/mavam%2Fpi--agents-compatible-2ea44f)
+![pi-subagents 0.87](https://img.shields.io/badge/pi--subagents-0.87-2ea44f)
 ![Node 24+](https://img.shields.io/badge/node-%E2%89%A524-339933)
 
 <img src="images/pi-profile-cycler-walkthrough.gif" alt="Managing model profiles inside Pi with /hprofile manage" width="820">
@@ -31,14 +31,14 @@ Alt+M   balanced  →  claude  →  codex  →  balanced …
 | 🛠️ **Built-in editor** | `/hprofile manage` creates, edits and deletes profiles without touching JSON. |
 | 🔎 **Fuzzy model search** | Type `opu` and only the Opus models are left. Only thinking levels the model supports are offered. |
 | 🧭 **Per-role routing** | `implementer` on Sonnet, `reviewer` on Gemini, everything else on one `default`. |
-| 🤖 **Knows your subagents** | Finds every agent in `~/.pi/agent/agents` and your trusted project's `.pi/agents`. |
+| 🤖 **Knows your subagents** | Finds the agents pi-subagents sees: built-in, `~/.pi/agent/agents`, `~/.agents`, and your trusted project's `.agents` and `.pi/agents`. |
 | 🗣️ **You still decide** | Ask the orchestrator for a specific model and it wins over the profile. |
 | 🌳 **Session-aware** | Each conversation branch remembers its own profile across resume, fork and `/tree`. |
 | 🛡️ **Safe by design** | Models are validated before switching or saving; failures roll back; saves are atomic with a `.bak`. Your agent files are never modified. |
 
 ## 🚀 Quick start
 
-Requires Pi 1.5.x with `mavam/pi-agents`.
+Requires Pi 1.5.x with `pi-subagents` (verified against 0.87.0). Upgrading from 1.x? Support for `mavam/pi-agents` was removed in 2.0.0; your `profile-cycler.json` keeps working unchanged.
 
 **1. Install**
 
@@ -50,7 +50,7 @@ pi install git:github.com/nanonoir/pi-profile-cycler
 
 **3. Switch**: add more profiles the same way and press `Alt+M`.
 
-Until you create a profile nothing changes: subagents keep mavam's own routing.
+Until you create a profile nothing changes: subagents keep pi-subagents' own routing.
 
 <details>
 <summary><b>Or start from the example profiles</b></summary>
@@ -89,7 +89,7 @@ If Pi is busy, a switch is queued and applied as soon as the current run settles
 `/hprofile manage` opens a menu: arrows to move, **Enter** to choose, **Esc** to go back.
 
 - **New profile**: pick a default model, then fine-tune the orchestrator or any subagent.
-- **Edit**: every subagent shows what it uses today: its own route, `default`, or mavam's `native` setting.
+- **Edit**: every subagent shows what it uses today: its own route, `default`, or the `native` setting from pi-subagents (the agent's own `model`).
 - **Save**: validates the models you changed, keeps `profile-cycler.json.bak` and applies the profile.
 - **Delete** and **Set as default** ask for confirmation and save right away.
 
@@ -98,10 +98,12 @@ If the file changes on disk while you edit, nothing is overwritten; just reopen 
 ## ⚙️ How a subagent gets its model
 
 ```text
-model you ask for  →  role in the profile  →  profile default  →  mavam's own setting
+model you ask for  →  role in the profile  →  profile default  →  pi-subagents' own resolution
 ```
 
-The orchestrator uses the profile's `main`, or its `default` when there is no `main`. If you ask for a model without a thinking level, mavam picks the level.
+The orchestrator uses the profile's `main`, or its `default` when there is no `main`. Routes are injected into the `subagent` launch as `provider/id:thinking`, because pi-subagents has no separate thinking field. If you ask for a model (with or without a `:level` suffix), it is left untouched and no thinking is added.
+
+The role is the agent name you launch, matched by its name, local name, alias or package-qualified name. Agents that run an external CLI (Claude Code, Codex, Cursor adapters) take a CLI alias instead of a Pi model: they never get the `default`, and a profile route for one blocks its launch.
 
 <details>
 <summary><b>Prefer JSON?</b> <code>~/.pi/agent/profile-cycler.json</code></summary>
@@ -126,7 +128,7 @@ The orchestrator uses the profile's `main`, or its `default` when there is no `m
 }
 ```
 
-- `main` is the orchestrator; `agents` maps any mavam role to a model.
+- `main` is the orchestrator; `agents` maps any pi-subagents agent name to a model.
 - `default` covers the orchestrator (when there is no `main`) and every subagent without its own route.
 - Each profile needs `main` or `default`. Run `/hprofile reload` after editing.
 
@@ -134,8 +136,11 @@ The orchestrator uses the profile's `main`, or its `default` when there is no `m
 
 ## ⚠️ Good to know
 
-- Only **new direct** subagents are routed; agents already running keep their model.
-- **Nested** subagents (spawned by other subagents) use mavam's own routing.
+- Only **new direct** launches (`subagent` with an `agent`, or `tasks` / `chain` steps) are routed; agents already running keep their model.
+- **Workflow scripts**, management actions and RPC/event launches keep pi-subagents' native model resolution.
+- A route set here takes the place of the per-run model, so it overrides `agentOverrides` and the agent's own `model` for routed roles.
+- The extension does not load inside pi-subagents' child processes, so an async child keeps the model it was launched with. **Nested** subagents therefore use pi-subagents' own routing.
+- A routed model outside pi-subagents' `modelScope` or above its `maxThinking` fails the launch visibly; the profile check covers only Pi's registry and supported thinking.
 - On Windows Pi reserves `Alt+P`, which is why the shortcut is `Alt+M`.
 
 ## 🧑‍💻 Development
@@ -149,5 +154,5 @@ npm ci && npm test && npm run typecheck
 ---
 
 <div align="center">
-<sub><a href="LICENSE">MIT</a> © 2026 Nahuel Nicolas Noir (<a href="https://github.com/nanonoir">nanonoir</a>) · Not an official pi-agents plugin</sub>
+<sub><a href="LICENSE">MIT</a> © 2026 Nahuel Nicolas Noir (<a href="https://github.com/nanonoir">nanonoir</a>) · Not an official pi-subagents plugin</sub>
 </div>

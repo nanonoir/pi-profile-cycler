@@ -1,7 +1,7 @@
 {
   "name": "pi-profile-cycler",
-  "version": "1.1.0",
-  "description": "Session-local model profiles for Pi and direct mavam/pi-agents spawns",
+  "version": "2.0.0",
+  "description": "Session-local model profiles for Pi and the pi-subagents subagent tool",
   "engines": { "node": ">=24" },
   "private": true,
   "license": "MIT",
@@ -26,8 +26,6 @@
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@earendil-works/pi-tui": "1.5.0",
     "@types/node": "^24.0.0",
-    "jiti": "2.7.0",
-    "pi-agents": "0.39.0",
     "typescript": "^5.9.0"
   }
 }
