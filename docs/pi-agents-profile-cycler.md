@@ -1,14 +1,47 @@
 # PRD — Pi Agents Profile Cycler v2
 
-**Estado:** Propuesta lista para implementación  
+**Estado:** Propuesta original (histórico); implementada en v2, estado actual en §0  
 **Fecha:** 2026-11-09  
 **Tipo:** Extensión global de Pi para el runtime `mavam/pi-agents`  
 **Base de trabajo:** Archivos extraídos de `pi-profile-cycler-v1-20261109.zip` (`pi-profile-cycler.ts`, `profile-cycler.json`, `README.md`, `test-local.cjs`).  
 **Nombre de trabajo del repositorio:** `pi-agents-profile-cycler`
 
+## 0. Estado actual y actualizaciones
+
+**Estado al 2026-11-10:** la v2 está implementada en este repositorio. El texto original de este documento se conserva como historia del dueño. Donde una afirmación ya no vale, está marcada inline como *superada* y remite a esta sección. El comportamiento vigente está en los documentos canónicos:
+
+- [Arquitectura](architecture.md): módulos, precedencia, transacción de activación y editor.
+- [Compatibilidad y límites](compatibility.md): revisiones inspeccionadas, contratos de Pi y mavam, delegación anidada.
+- [README](../README.md): instalación, uso y comandos.
+- [ExecPlans completados](exec-plans/completed/), en particular [`hprofile-manage.md`](exec-plans/completed/hprofile-manage.md).
+- [Deuda técnica](exec-plans/tech-debt-tracker.md) y [checklist manual](manual-testing.md).
+
+Versiones verificadas: Pi 1.5.x y `mavam/pi-agents` 0.39.0 (ver compatibility.md).
+
+### Cambios respecto del texto original
+
+| Fecha | Cambio | Texto original afectado |
+|---|---|---|
+| 2026-11-09 | El atajo es **Alt+M**. Pi 1.5.0 reserva **Alt+P** en Windows para "modelo anterior" (`app.model.cycleBackward`) y omite los atajos de extensiones sobre esa tecla. | `Alt+P` en §1, RF-01, §6.3, §10 (Fase 2) y §11. |
+| 2026-11-09 | El prefijo de proveedor es `openai/` (p. ej. `openai/gpt-6.1-sol`), no `openai-codex/`. | IDs de modelo de §4 y §6.1. |
+| 2026-11-09 | Política de precedencia **explicit-wins**: un `model`/`thinking` explícito en `agent_spawn` gana por campo y el perfil completa lo omitido. | `profile-wins` en RF-04, §8, §10 y §11. |
+| 2026-11-10 | Un `model` explícito sin `thinking` explícito no recibe thinking inyectado; mavam lo resuelve (commit `a8b6767`). | Complementa explicit-wins; no figura en el original. |
+| 2026-11-10 | Perfiles: `main` y `agents` son opcionales; `agents` admite cualquier nombre de rol; `default` cubre al orquestador si falta `main` y a todo subagente sin ruta propia; todo perfil requiere `main` o `default`. Prioridad: explícito → rol → `default` → nativo de mavam. `manage` es nombre reservado. | Matriz obligatoria de siete roles en §4, §6.1, §8 y §11; RF-06. |
+| 2026-11-10 | `/hprofile manage`: editor dentro de Pi (crear, editar, borrar, activar y definir perfil por defecto), selector de modelos con búsqueda difusa y descubrimiento, solo lectura, de agentes de usuario y de proyecto confiable. | RF-02 (lista de comandos). |
+| 2026-11-10 | Escritura: `manage` escribe únicamente `profile-cycler.json` (con `.bak`, atómico y validado). Las rutas se guardan al confirmar *Guardar*; borrar o definir el default requiere confirmación. **Los Markdown de agentes nunca se escriben.** | Reglas de "sin escritura" en RF-05, §7, §8 y §10 (Fase 1). |
+| 2026-11-10 | Licencia **MIT**, © 2026 Nahuel Nicolas Noir (nanonoir). | Licencia pendiente en §10 (Fase 0). |
+| 2026-11-10 | Smoke manual del dueño en Pi: `manage`, selector difuso, creación y edición de perfiles, y Alt+M funcionaron. | Verificación pendiente de §8 y §11. |
+
+### Límites vigentes
+
+- **Delegación anidada no soportada:** los helpers creados por un subagente (`spawn: true`) no reciben el routing de perfil. El hook de Pi cubre solo el `agent_spawn` directo del orquestador. Sin un hook estable de mavam no se declara soporte (§6.4; [compatibility.md](compatibility.md); TD-004).
+- **Pendiente de verificación real:** un spawn autenticado con un perfil que solo define `default` (TD-002).
+- **Escritura entre ventanas:** la comparación antes de escribir en `manage` no es atómica entre procesos (TD-003).
+- Sin cambios respecto del original: no hay fallback por cuota, no se editan los `.md` de los agentes y no se tocan `settings.json`, `auth.json`, MCP ni `context-prune`.
+
 ## 1. Resumen ejecutivo
 
-Evolucionar el selector experimental v1 a una extensión pequeña, predecible y mantenible de Pi que permita alternar **en la misma sesión** entre tres perfiles de asignación de modelos: **`balanced`**, **`claude`** y **`codex`**. Una pulsación de **`Alt+P`** debe activar el siguiente perfil y actualizar el modelo/thinking del orquestador y el routing de **las próximas delegaciones** de `pi-agents`.
+Evolucionar el selector experimental v1 a una extensión pequeña, predecible y mantenible de Pi que permita alternar **en la misma sesión** entre tres perfiles de asignación de modelos: **`balanced`**, **`claude`** y **`codex`**. Una pulsación de **`Alt+P`** *(superado: atajo actual **Alt+M**, §0)* debe activar el siguiente perfil y actualizar el modelo/thinking del orquestador y el routing de **las próximas delegaciones** de `pi-agents`.
 
 La v2 debe **conservar `pi-agents`**, no editar los `.md` de los agentes, no compartir accidentalmente el estado activo entre ventanas o sesiones y no tocar credenciales, permisos, MCP, compaction o pruning. Los agentes ya creados mantienen su identidad/modelo; el nuevo perfil aplica a los **agentes nuevos**, incluso si Pi fue iniciado antes del cambio.
 
@@ -39,7 +72,7 @@ Fuentes: [mavam/pi-agents — profiles](https://github.com/mavam/pi-agents/blob/
 
 ## 3. Objetivos y criterios de éxito
 
-1. Cambiar de perfil con **un atajo** (`Alt+P`) o `/hprofile <nombre>`, sin reiniciar Pi ni perder el contexto.
+1. Cambiar de perfil con **un atajo** (`Alt+P`, superado: **Alt+M**, §0) o `/hprofile <nombre>`, sin reiniciar Pi ni perder el contexto.
 2. Seleccionar inmediatamente el modelo y thinking del **orquestador**, a partir de la próxima solicitud segura; no interrumpir respuestas en curso.
 3. Hacer que los **nuevos agentes delegados directamente por el orquestador** usen el modelo/thinking definido para su rol en el perfil activo, independientemente del momento en que comenzó la sesión.
 4. Mantener la configuración activa **por sesión**, no por archivo global mutable.
@@ -71,13 +104,13 @@ IDs orientativos (no inventar alias si no están registrados):
 - Sonnet: `claude-code/claude-sonnet-5-5`
 - Flash: `antigravity/gemini-3-8-flash`
 
-`reviewer`, `explorer` y `archiver` deben declararse en cada perfil o mediante una sección compartida **con resolución determinista**: todos se asignan explícitamente como Gemini High. Un posible agente `teacher` preexistente no debe alterarse si no se incluye expresamente.
+`reviewer`, `explorer` y `archiver` deben declararse en cada perfil o mediante una sección compartida **con resolución determinista**: todos se asignan explícitamente como Gemini High. Un posible agente `teacher` preexistente no debe alterarse si no se incluye expresamente. *(Superado 2026-11-10: los siete roles estándar ya no son obligatorios; ver §0.)*
 
 ## 5. Requisitos funcionales
 
 ### RF-01 — Selector rápido
 
-- `Alt+P` recorre `balanced → claude → codex → balanced`, usando el orden configurable del JSON.
+- `Alt+P` *(superado: **Alt+M**, §0)* recorre `balanced → claude → codex → balanced`, usando el orden configurable del JSON.
 - Un cambio exitoso muestra una notificación breve y el perfil activo en la barra de estado.
 - El atajo no abre un menú ni pide confirmación en el flujo normal.
 - `Tab` queda intacta para el autocompletado de Pi.
@@ -89,6 +122,7 @@ IDs orientativos (no inventar alias si no están registrados):
 - `/hprofile next`: siguiente perfil.
 - `/hprofile status`: muestra perfil y matriz efectiva de rutas, el modelo real del orquestador, y advierte rutas no aplicables.
 - `/hprofile reload`: relee el JSON de perfiles y valida su contenido sin reiniciar Pi. **No cambia el perfil activo** salvo que el seleccionado ya no exista; en ese caso informar y pedir elección o aplicar explícitamente el default documentado.
+- `/hprofile manage` *(añadido 2026-11-10)*: editor dentro de Pi para crear, editar, borrar, activar y definir el perfil por defecto, con selector de modelos difuso. Ver §0.
 - No añadir comandos que nunca puedan ejecutarse; pruebas para todos los comandos publicados.
 
 ### RF-03 — Routing del orquestador
@@ -106,7 +140,7 @@ IDs orientativos (no inventar alias si no están registrados):
 - Inyectar `agent.model` y `agent.thinking` conforme al perfil activo en el **momento de ejecutar el spawn**.
 - No modificar `job`, `name`, `profile`, `after`, `cwd`, `tools`, `skills`, `spawn`, `failFast` ni demás campos.
 - Un agente sin coincidencia de rol conserva el comportamiento nativo de mavam; no imponerle una ruta aleatoria.
-- **Actualización 2026-11-09 (decisión del dueño):** la política vigente es **`explicit-wins`**: un `model`/`thinking` explícito en el `agent_spawn` se respeta y el perfil solo completa los campos omitidos. Texto original, histórico:
+- **Actualización 2026-11-09 (decisión del dueño):** la política vigente es **`explicit-wins`**: un `model`/`thinking` explícito en el `agent_spawn` se respeta y el perfil solo completa los campos omitidos. Desde 2026-11-10, un `model` explícito sin `thinking` explícito no recibe thinking inyectado (ver §0). Texto original, histórico:
 - En roles configurados, la política inicial es **`profile-wins`**: los valores explícitos de modelo/thinking enviados por el LLM se sustituyen por los del perfil. Dejar esta regla visible en documentación y pruebas. Una política `respect-explicit` podrá estudiarse después, pero no es requisito del MVP.
 - La inyección debe validar antes del spawn, sin introducir nuevas llamadas de modelo.
 
@@ -122,7 +156,7 @@ IDs orientativos (no inventar alias si no están registrados):
 ### RF-06 — Configuración simple
 
 - Un único archivo de configuración de usuario, p. ej. `~/.pi/agent/profile-cycler.json`.
-- Schema con `version`, `defaultProfile`, `order`, `profiles` y `main`/`agents`. Sin `active` mutable compartido.
+- Schema con `version`, `defaultProfile`, `order`, `profiles` y `main`/`agents`. Sin `active` mutable compartido. *(Actualizado 2026-11-10: `main` y `agents` opcionales, `default` por perfil, `agents` con cualquier nombre de rol y `manage` reservado; ver §0.)*
 - Configurable sin recompilar. Los cambios se aplican mediante `/hprofile reload`.
 - Validar JSON, nombres duplicados, orden, roles, modelo no vacío, ID `provider/model`, thinking permitido, datos inesperados y valores faltantes. Error legible indicando el campo exacto.
 - Permitir agregar perfiles adicionales en el futuro, sin asumir que siempre habrá tres; el ejemplo inicial incluye solo los tres aprobados.
@@ -171,7 +205,7 @@ IDs orientativos (no inventar alias si no están registrados):
 }
 ```
 
-**Atención:** los `agents: {}` de `claude` y `codex` son **abreviaturas explicativas, no el archivo final**. El archivo distribuido debe declarar la matriz completa de la sección 4. La validación debe fallar o avisar inequívocamente si faltan roles obligatorios; no introducir fallback implícito.
+**Atención:** los `agents: {}` de `claude` y `codex` son **abreviaturas explicativas, no el archivo final**. El archivo distribuido debe declarar la matriz completa de la sección 4. La validación debe fallar o avisar inequívocamente si faltan roles obligatorios; no introducir fallback implícito. *(Superado 2026-11-10: no hay roles obligatorios; ver §0.)*
 
 ### 6.2 Paquetes y módulos propuestos
 
@@ -235,7 +269,7 @@ Siguiente agent_spawn (en la misma sesión)
 
 ## 7. Migración segura desde v1
 
-La carpeta descomprimida es el punto de partida del repo. El desarrollo no debe instalar o ejecutar simultáneamente dos extensiones que registren el mismo `Alt+P` y `/hprofile`.
+La carpeta descomprimida es el punto de partida del repo. El desarrollo no debe instalar o ejecutar simultáneamente dos extensiones que registren el mismo `Alt+P` y `/hprofile`. *(El atajo actual es `Alt+M`; ver §0.)*
 
 1. Inicializar Git en la carpeta extraída; conservar los archivos v1 como referencia en el historial de desarrollo, sin credenciales ni datos personales.
 2. Crear una rama de implementación y asegurar un respaldo de los `agents/*.md` si v1 ya fue instalada en `~/.pi/agent/extensions/`.
@@ -250,13 +284,13 @@ La carpeta descomprimida es el punto de partida del repo. El desarrollo no debe 
 
 **Unitarias (obligatorias, rápidas):**
 
-- Válido/inválido: JSON, rutas, thinking, nombres, orden, perfiles faltantes, roles obligatorios.
+- Válido/inválido: JSON, rutas, thinking, nombres, orden, perfiles faltantes, roles obligatorios. *(«Roles obligatorios» superado; §0.)*
 - Conversión de nombres antiguos a nuevos sin intercambiar proveedores.
 - `agent_spawn` de un agente con `profile`; fallback exacto por `name`; agente ad hoc sin coincidencia.
-- Prioridad `profile-wins`; aislamiento de elementos de `agents[]` y preservación del resto de argumentos.
+- Prioridad `profile-wins` *(superada por explicit-wins; §0)*; aislamiento de elementos de `agents[]` y preservación del resto de argumentos.
 - Cambio A→B→C→A; rollback cuando falla autenticación/registro; estado no persistido en fallo.
 - Restauración según rama activa, cambio de sesión y no contaminación cruzada.
-- Nunca escribir `.md`, `settings.json`, `auth.json`, `mcp.json`, `context-prune/settings.json` ni otros archivos fuera del JSON intencional del usuario.
+- Nunca escribir `.md`, `settings.json`, `auth.json`, `mcp.json`, `context-prune/settings.json` ni otros archivos fuera del JSON intencional del usuario. *(Vigente para los demás archivos. Desde 2026-11-10, `/hprofile manage` escribe `profile-cycler.json` y su `.bak` solo tras confirmación; ver §0.)*
 
 **Integración ligera (obligatoria):**
 
@@ -282,7 +316,7 @@ La carpeta descomprimida es el punto de partida del repo. El desarrollo no debe 
 
 ### Fase 0 — Inicializar repo sobre v1
 
-- `git init` en la carpeta descomprimida, `.gitignore`, metadata/package y licencia elegida por el propietario.
+- `git init` en la carpeta descomprimida, `.gitignore`, metadata/package y licencia elegida por el propietario. *(Resuelta: licencia MIT; ver §0.)*
 - Reestructurar código; actualizar README para que describa este plugin, no una integración ajena.
 - Incorporar este PRD y una página de arquitectura.
 - Inventariar y conservar comportamiento existente verificable; no hacer refactor sin tests básicos.
@@ -291,13 +325,13 @@ La carpeta descomprimida es el punto de partida del repo. El desarrollo no debe 
 
 - Implementar schema v2 y ejemplo completo `balanced/claude/codex`.
 - Funciones puras de validación y mapping; tests unitarios.
-- Quitar cualquier escritura a Markdown o `active` global.
+- Quitar cualquier escritura a Markdown o `active` global. *(Los Markdown siguen sin escribirse; `/hprofile manage` escribe solo `profile-cycler.json`; ver §0.)*
 
 ### Fase 2 — Routing en caliente
 
 - Model switch del padre con rollback y comprobación de thinking.
 - Hook `tool_call` para `agent_spawn`, resolver roles de forma determinista.
-- Barra de estado, `Alt+P`, comandos y diagnóstico.
+- Barra de estado, `Alt+P` *(hoy `Alt+M`; §0)*, comandos y diagnóstico.
 - Tests unitarios y primer smoke en Pi.
 
 ### Fase 3 — Persistencia y robustez
@@ -314,13 +348,13 @@ La carpeta descomprimida es el punto de partida del repo. El desarrollo no debe 
 
 ## 11. Definition of Done
 
-- [ ] Perfiles visibles únicamente como `balanced`, `claude` y `codex`; matriz de 8 rutas/roles por perfil conforme a la sección 4.
-- [ ] `Alt+P` cambia el perfil sin reiniciar y mantiene el mismo historial de conversación.
+- [ ] Perfiles visibles únicamente como `balanced`, `claude` y `codex`; matriz de 8 rutas/roles por perfil conforme a la sección 4. *(Superado 2026-11-10: el ejemplo trae estos tres perfiles, pero se pueden crear más y los siete roles no son obligatorios; ver §0.)*
+- [ ] `Alt+P` *(hoy `Alt+M`; §0)* cambia el perfil sin reiniciar y mantiene el mismo historial de conversación.
 - [ ] `/hprofile`, `/hprofile <nombre>`, `/hprofile next`, `/hprofile status`, `/hprofile reload` funcionan.
 - [ ] Los **nuevos spawns directos** usan efectivamente el modelo/thinking del perfil vigente en esa sesión, en una llamada individual o un grafo.
 - [ ] Una sesión ya iniciada puede usar varios perfiles sucesivos; los agentes anteriores conservan su ruta.
 - [ ] Dos sesiones concurrentes no modifican el perfil una de otra.
-- [ ] Ningún cambio de perfil escribe `agents/*.md`, archivos globales de Pi ni credenciales.
+- [ ] Ningún cambio de perfil escribe `agents/*.md`, archivos globales de Pi ni credenciales. *(Vigente para cambios de perfil; `/hprofile manage` escribe solo `profile-cycler.json`, ver §0.)*
 - [ ] Al reanudar sesión y navegar ramas, la selección se restaura según política documentada y verificada.
 - [ ] Modelos inexistentes y fallos no confirman una activación falsa.
 - [ ] Delegación anidada: prueba documentada con resultado explícito; no prometer soporte no implementado.
