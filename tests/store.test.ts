@@ -50,11 +50,22 @@ test("interrupted write leaves the original and no temp files", () => withDir((d
   assert.throws(() => writeConfig(path, base(), crash), /crash/);
   assert.equal(readFileSync(path, "utf8"), "original");
   assert.deepEqual(readdirSync(dir).sort(), ["profile-cycler.json", "profile-cycler.json.bak"]);
-  const failWrite: StoreFs = { ...real, writeSync: (fd, data) => { real.writeSync(fd, data.slice(0, 10)); throw new Error("disk full"); } };
+  const failWrite: StoreFs = { ...real, writeSync: (fd, data, offset) => { real.writeSync(fd, data, offset, 10); throw new Error("disk full"); } };
   assert.throws(() => writeConfig(path, base(), failWrite), /disk full/);
   assert.equal(readFileSync(path, "utf8"), "original");
   assert.deepEqual(readdirSync(dir).sort(), ["profile-cycler.json", "profile-cycler.json.bak"]);
   writeConfig(path, base(), { ...real, renameSync });
+  assert.deepEqual(parseConfig(readFileSync(path, "utf8")), base());
+}));
+
+test("short writes are retried until the whole file is written", () => withDir((_dir, path) => {
+  let calls = 0;
+  const trickle: StoreFs = { ...real, writeSync: (fd, data, offset, length) => { calls++; return real.writeSync(fd, data, offset, Math.min(length, 7)); } };
+  writeConfig(path, base(), trickle);
+  assert.ok(calls > 1);
+  assert.deepEqual(parseConfig(readFileSync(path, "utf8")), base());
+  const stuck: StoreFs = { ...real, writeSync: () => 0 };
+  assert.throws(() => writeConfig(path, base(), stuck), /no progress/);
   assert.deepEqual(parseConfig(readFileSync(path, "utf8")), base());
 }));
 

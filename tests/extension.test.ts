@@ -137,6 +137,20 @@ test("a pending profile survives reload, applies later, and is cancelled explici
   assert.doesNotMatch(h.statuses.at(-1)!, /pending/);
 });
 
+test("with no selected profile, reload cancels a pending profile it removes", async () => {
+  const h = harness();
+  h.setBranch([{ type: "custom", customType: ENTRY_TYPE, data: { version: 1, profile: "ghost" } }]);
+  await h.emit("session_start");
+  assert.match(h.statuses.at(-1)!, /profile: unavailable/);
+  h.setIdle(false); await h.command("codex"); h.setIdle(true);
+  assert.match(h.statuses.at(-1)!, /pending: codex/);
+  const candidate = structuredClone(h.config);
+  delete candidate.profiles.codex; candidate.order = ["balanced", "claude"];
+  h.setText(JSON.stringify(candidate)); await h.command("reload");
+  assert.match(h.notifications.join("\n"), /Pending profile codex cancelled: profile removed by reload/);
+  assert.doesNotMatch(h.statuses.at(-1)!, /pending/);
+});
+
 test("a pending profile that fails to apply is cancelled explicitly, and an applied one supersedes with a notice", async () => {
   const h = harness(); await h.emit("session_start");
   h.setIdle(false); await h.command("claude"); h.setIdle(true);
