@@ -116,5 +116,5 @@ Main areas: `src/` (`index.ts`, `routing.ts`, `discovery.ts`, `manage.ts`), `tes
 ### Follow-up
 
 - Real Pi smoke against pi-subagents 0.87.0 (TD-002).
-- Tag `v2.0.0` and push: waiting for owner approval.
+- Released by owner decision as `1.2.0` (not `2.0.0`), tagged `v1.2.0` and pushed on 2026-11-10.
 - Technical debt recorded in [tech-debt-tracker.md](../tech-debt-tracker.md): TD-002, TD-004, TD-005 (discovery gaps), TD-006 (workflow, reply-block and RPC launches not routed), TD-007 (alias-only external roles not labelled in manage), TD-008 (preflight does not check `modelScope` or `maxThinking`).

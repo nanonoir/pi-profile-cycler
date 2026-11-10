@@ -38,7 +38,7 @@ Alt+M   balanced  →  claude  →  codex  →  balanced …
 
 ## 🚀 Quick start
 
-Requires Pi 1.5.x with `pi-subagents` (verified against 0.87.0). Upgrading from 1.x? Support for `mavam/pi-agents` was removed in 2.0.0; your `profile-cycler.json` keeps working unchanged.
+Requires Pi 1.5.x with `pi-subagents` (verified against 0.87.0). Upgrading from 1.1 or earlier? Support for `mavam/pi-agents` was removed in 1.2.0; your `profile-cycler.json` keeps working unchanged.
 
 **1. Install**
 

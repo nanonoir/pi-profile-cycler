@@ -1,6 +1,6 @@
 # Verified contracts and compatibility limits
 
-Direct `subagent` launch routing is supported by the inspected pi-subagents 0.87.0 source. `mavam/pi-agents` (supported through 1.x) is no longer supported as of 2.0.0. Nested subagent routing is **not supported by this extension**. Source inspection is not a real provider smoke test.
+Direct `subagent` launch routing is supported by the inspected pi-subagents 0.87.0 source. `mavam/pi-agents` (supported through 1.1.x) is no longer supported as of 1.2.0. Nested subagent routing is **not supported by this extension**. Source inspection is not a real provider smoke test.
 
 ## Inspected revisions
 
