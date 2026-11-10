@@ -128,3 +128,7 @@ Left open for the owner: an explicit request `model` without explicit `thinking`
 - Phase 4a (`cf3bd9f`, `8674ec2`): fuzzy model picker via `ctx.ui.custom` + pi-tui `Input`/`fuzzyFilter`, current route first, 10-row scroll, plain `select` fallback when `custom` is missing or throws. pi-tui added as peer `^1.5.0` / dev `1.5.0`. Tested with Pi's real `KeybindingsManager` and fake tui; real terminal rendering unverified.
 - Phase 4b (`2976586`): `src/manage.ts` dialog flow over injected deps; reload logic extracted to a shared `reload(ctx)`; `CyclerOptions` gains `writeConfig`/`pickModel`/`discoverRoles`. Menu re-reads the file each pass; only the edited profile is preflighted before writing; Delete and Set as default apply immediately (not drafted). `npm test` 84/84, typecheck clean.
 - Phase 5: README (manage, default, priority), architecture (modules, precedence, single write path), manual checklist rows for manage.
+
+### Review round 2 (same reviewer, PASS)
+
+Fixes in `4c3d349` verified (92/92). Follow-up `fix(store)`: short `writeSync` writes are retried (no-progress guard) and the removed-pending cancellation on reload has a test; 94/94, typecheck clean. Accepted residuals: reload still preflights every profile (error names it); compare-before-write is not atomic across processes (small window).
