@@ -1,54 +1,91 @@
-# Pi Agents Profile Cycler
+<div align="center">
 
-> Switch your orchestrator and every subagent between model profiles in one keystroke.
+# Pi Profile Cycler
 
-A small [Pi](https://github.com/earendil-works/pi) extension for [`mavam/pi-agents`](https://github.com/mavam/pi-agents). Pick a profile and the parent model, its thinking level and the routes for new subagents change together, without restarting the session or touching your agent files.
+**One keystroke to switch the model behind your orchestrator and every subagent.**
+
+A [Pi](https://github.com/earendil-works/pi) extension for [`mavam/pi-agents`](https://github.com/mavam/pi-agents)
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Pi 1.5.x](https://img.shields.io/badge/Pi-1.5.x-8a2be2)
+![pi-agents](https://img.shields.io/badge/mavam%2Fpi--agents-compatible-2ea44f)
+![Node 24+](https://img.shields.io/badge/node-%E2%89%A524-339933)
+
+<img src="images/pi-profile-cycler-walkthrough.gif" alt="Managing model profiles inside Pi with /hprofile manage" width="820">
+
+</div>
+
+---
+
+Out of quota on one provider? Want Opus for planning and Haiku for everything else? Instead of editing agent files or restarting Pi, save your setups as **profiles** and flip between them mid-conversation.
 
 ```text
 Alt+M   balanced  →  claude  →  codex  →  balanced …
 ```
 
-## Features
+## ✨ Features
 
-- ⚡ **One key**: `Alt+M` cycles profiles. `/hprofile` opens a picker.
-- 🧭 **Per-role routing**: `implementer` on Sonnet, `reviewer` on Gemini, everything else on one default.
-- 🛠️ **Built-in editor**: `/hprofile manage` creates, edits and deletes profiles, with fuzzy model search and your real subagents.
-- 🗣️ **You still decide**: ask the orchestrator for a specific model and it wins over the profile.
-- 🌳 **Session-aware**: each conversation branch remembers its own profile across resume, fork and `/tree`.
-- 🛡️ **Safe switching**: every model is validated first; failures roll back and never leave a false status.
+| | |
+|---|---|
+| ⚡ **One key** | `Alt+M` cycles profiles; the parent model, its thinking and the routes for new subagents change together. |
+| 🛠️ **Built-in editor** | `/hprofile manage` creates, edits and deletes profiles without touching JSON. |
+| 🔎 **Fuzzy model search** | Type `opu` and only the Opus models are left. Only thinking levels the model supports are offered. |
+| 🧭 **Per-role routing** | `implementer` on Sonnet, `reviewer` on Gemini, everything else on one `default`. |
+| 🤖 **Knows your subagents** | Finds every agent in `~/.pi/agent/agents` and your trusted project's `.pi/agents`. |
+| 🗣️ **You still decide** | Ask the orchestrator for a specific model and it wins over the profile. |
+| 🌳 **Session-aware** | Each conversation branch remembers its own profile across resume, fork and `/tree`. |
+| 🛡️ **Safe by design** | Models are validated before switching or saving; failures roll back; saves are atomic with a `.bak`. Your agent files are never modified. |
 
-## Install
+## 🚀 Quick start
 
-Requires Pi 1.5.x and `mavam/pi-agents`.
+Requires Pi 1.5.x with `mavam/pi-agents`.
 
 ```sh
-git clone <this-repo> pi-profile-cycler
-pi install ./pi-profile-cycler
-cp pi-profile-cycler/examples/profile-cycler.json ~/.pi/agent/profile-cycler.json
+pi install git:github.com/nanonoir/pi-profile-cycler
 ```
 
-Only copy the example if you don't already have a `profile-cycler.json`. Then check the model IDs against `pi --list-models`, or fix them from `/hprofile manage`.
+Start from the example profiles (skip this if you already have a `profile-cycler.json`):
 
-## Use
+```sh
+curl -o ~/.pi/agent/profile-cycler.json https://raw.githubusercontent.com/nanonoir/pi-profile-cycler/main/examples/profile-cycler.json
+```
+
+Open Pi, run `/hprofile manage` and adjust the models to the ones you have (`pi --list-models`). Done: press `Alt+M`.
+
+## ⌨️ Commands
 
 | Command | What it does |
 |---|---|
 | `Alt+M` · `/hprofile next` | Next profile |
-| `/hprofile` | Pick from a menu |
+| `/hprofile` | Pick a profile from a menu |
 | `/hprofile <name>` | Activate a profile |
-| `/hprofile status` | Active profile, real parent model and next subagent routes |
-| `/hprofile manage` | Create, edit, delete and activate profiles from a menu |
+| `/hprofile manage` | Create, edit, delete and activate profiles |
+| `/hprofile status` | Active profile, real parent model and where each subagent route comes from |
 | `/hprofile reload` | Apply hand edits to the JSON; on error the previous config stays |
 
-If Pi is busy, the switch is queued and applied when the current run settles.
+If Pi is busy, a switch is queued and applied as soon as the current run settles.
 
-## Manage profiles
+## 🛠️ Managing profiles
 
-`/hprofile manage` lists your profiles, then lets you edit the **default**, the **orchestrator** and every subagent it finds in `~/.pi/agent/agents` and your trusted project's `.pi/agents`. Navigate with arrows, Enter and Esc; in the model picker just type to search (`opu` → Opus models). Route edits are written only on **Save**, which validates every changed model, keeps a `profile-cycler.json.bak` and applies the change. **Delete** and **Set as default** are profile-level actions that write immediately, after you confirm. If the file changed on disk meanwhile, nothing is written and you must reopen the editor.
+`/hprofile manage` opens a menu: arrows to move, **Enter** to choose, **Esc** to go back.
 
-## Configure
+- **New profile**: pick a default model, then fine-tune the orchestrator or any subagent.
+- **Edit**: every subagent shows what it uses today: its own route, `default`, or mavam's `native` setting.
+- **Save**: validates the models you changed, keeps `profile-cycler.json.bak` and applies the profile.
+- **Delete** and **Set as default** ask for confirmation and save right away.
 
-Prefer the editor, or edit `~/.pi/agent/profile-cycler.json` and run `/hprofile reload`:
+If the file changes on disk while you edit, nothing is overwritten; just reopen the editor.
+
+## ⚙️ How a subagent gets its model
+
+```text
+model you ask for  →  role in the profile  →  profile default  →  mavam's own setting
+```
+
+The orchestrator uses the profile's `main`, or its `default` when there is no `main`. If you ask for a model without a thinking level, mavam picks the level.
+
+<details>
+<summary><b>Prefer JSON?</b> <code>~/.pi/agent/profile-cycler.json</code></summary>
 
 ```json
 {
@@ -72,15 +109,17 @@ Prefer the editor, or edit `~/.pi/agent/profile-cycler.json` and run `/hprofile 
 
 - `main` is the orchestrator; `agents` maps any mavam role to a model.
 - `default` covers the orchestrator (when there is no `main`) and every subagent without its own route.
-- Each profile needs `main` or `default`. Priority per subagent: model you ask for → role → `default` → mavam's own setting.
+- Each profile needs `main` or `default`. Run `/hprofile reload` after editing.
 
-## Limits
+</details>
 
-- Only **new direct** subagents are routed. Running agents keep their model.
-- **Nested** subagents (spawned by other subagents) use mavam's native routing.
-- On Windows, Pi reserves `Alt+P`, so the shortcut is `Alt+M`.
+## ⚠️ Good to know
 
-## Develop
+- Only **new direct** subagents are routed; agents already running keep their model.
+- **Nested** subagents (spawned by other subagents) use mavam's own routing.
+- On Windows Pi reserves `Alt+P`, which is why the shortcut is `Alt+M`.
+
+## 🧑‍💻 Development
 
 ```sh
 npm ci && npm test && npm run typecheck
@@ -88,4 +127,8 @@ npm ci && npm test && npm run typecheck
 
 [Architecture](docs/architecture.md) · [Compatibility](docs/compatibility.md) · [Manual testing](docs/manual-testing.md) · [PRD](docs/pi-agents-profile-cycler.md)
 
-<sub>[MIT](LICENSE) © 2026 Nahuel Nicolas Noir (nanonoir) · not an official pi-agents plugin</sub>
+---
+
+<div align="center">
+<sub><a href="LICENSE">MIT</a> © 2026 Nahuel Nicolas Noir (<a href="https://github.com/nanonoir">nanonoir</a>) · Not an official pi-agents plugin</sub>
+</div>
