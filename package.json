@@ -4,7 +4,7 @@
   "description": "Session-local model profiles for Pi and direct mavam/pi-agents spawns",
   "engines": { "node": ">=24" },
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
