@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "defaultProfile": "balanced",
+  "order": ["balanced", "claude", "codex"],
+  "profiles": {
+    "balanced": {
+      "main": { "model": "openai/gpt-6.1-sol", "thinking": "medium" },
+      "agents": {
+        "specs-writer": { "model": "openai/gpt-6.1-terra", "thinking": "high" },
+        "designer": { "model": "openai/gpt-6.1-sol", "thinking": "medium" },
+        "implementer": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" },
+        "fix-agent": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" },
+        "reviewer": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" },
+        "explorer": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" },
+        "archiver": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" }
+      }
+    },
+    "claude": {
+      "main": { "model": "claude-code/claude-opus-5-5", "thinking": "medium" },
+      "agents": {
+        "specs-writer": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" },
+        "designer": { "model": "claude-code/claude-opus-5-5", "thinking": "medium" },
+        "implementer": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" },
+        "fix-agent": { "model": "claude-code/claude-sonnet-5-5", "thinking": "medium" },
+        "reviewer": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" },
+        "explorer": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" },
+        "archiver": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" }
+      }
+    },
+    "codex": {
+      "main": { "model": "openai/gpt-6.1-sol", "thinking": "low" },
+      "agents": {
+        "specs-writer": { "model": "openai/gpt-6.1-terra", "thinking": "high" },
+        "designer": { "model": "openai/gpt-6.1-sol", "thinking": "medium" },
+        "implementer": { "model": "openai/gpt-6.1-terra", "thinking": "medium" },
+        "fix-agent": { "model": "openai/gpt-6.1-terra", "thinking": "medium" },
+        "reviewer": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" },
+        "explorer": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" },
+        "archiver": { "model": "antigravity/gemini-3-8-flash", "thinking": "high" }
+      }
+    }
+  }
+}
