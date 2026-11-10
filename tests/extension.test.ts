@@ -66,6 +66,33 @@ test("launch roles resolve through discovered aliases and external-runner agents
   assert.equal(external.model, undefined);
 });
 
+test("discovery runs lazily: not at all when every launch carries an explicit model", async () => {
+  const h = harness(); await h.emit("session_start");
+  let runs = 0;
+  h.setDiscovery({ get roles() { runs++; return []; }, diagnostics: [] });
+  await h.emit("tool_call", { toolName: "subagent", input: { agent: "implementer", task: "t", model: "user/model" } });
+  assert.equal(runs, 0);
+  await h.emit("tool_call", { toolName: "subagent", input: { agent: "implementer", task: "t" } });
+  assert.equal(runs, 1);
+});
+
+test("/hprofile status warns when pi-subagents builtin agents were not found", async () => {
+  const h = harness(); await h.emit("session_start");
+  await h.command("status");
+  assert.doesNotMatch(h.notifications.at(-1)!, /builtin agents not found/);
+  h.setDiscovery({ roles: [], diagnostics: [], builtinMissing: true });
+  await h.command("status");
+  assert.match(h.notifications.at(-1)!, /pi-subagents builtin agents not found; external CLI builtins may receive the default/);
+});
+
+test("reload warns, without failing, when the file routes a discovered external CLI agent", async () => {
+  const h = harness(); await h.emit("session_start");
+  h.setDiscovery({ roles: [{ name: "implementer", external: true, source: "builtin", filePath: "/b", description: "d" }], diagnostics: [] });
+  await h.command("reload");
+  assert.ok(h.notifications.some(text => /profiles\.balanced\.agents\.implementer: .*external CLI/.test(text)));
+  assert.ok(!h.notifications.some(text => /Profile error/.test(text)));
+});
+
 test("switch failure/clamping rolls back and does not persist a false selection", async () => {
   const h = harness(); await h.emit("session_start");
   const before = h.model(); const count = h.branch().length;
@@ -212,7 +239,7 @@ test("session replaced during an in-flight switch rolls it back and never persis
 
 test("busy tree reconcile whose parent apply fails clears the early route and blocks spawns (saved and default)", async () => {
   const blocked = async (h: ReturnType<typeof harness>) => {
-    assert.match(h.notifications.at(-1)!, /Pending profile \w+ cancelled.*Direct spawns blocked/);
+    assert.match(h.notifications.at(-1)!, /Pending profile \w+ cancelled.*Direct launches blocked/);
     assert.doesNotMatch(h.notifications.at(-1)!, /Parent model unchanged/);
     assert.match(h.statuses.at(-1)!, /^profile: unavailable$/);
     assert.equal((await h.emit("tool_call", { toolName: "subagent", input: { agent: "implementer", task: "t" } }) as { block: boolean }).block, true);

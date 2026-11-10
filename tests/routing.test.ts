@@ -17,6 +17,9 @@ test("precedence: explicit model > role > default > native; an explicit model ge
   assert.deepEqual(patch("implementer", "user/model"), {});
   assert.deepEqual(patch("implementer", "user/model:low", fallback), {});
   assert.deepEqual(patch("implementer", " "), { model: "provider/model:medium" });
+  assert.deepEqual(patch("implementer", "inherit"), { model: "provider/model:medium" }, "pi-subagents treats \"inherit\" as no model");
+  assert.deepEqual(patch("teacher", " inherit ", fallback), { model: "def/model:off" });
+  assert.deepEqual(patch("implementer", "Inherit"), {}, "matching is exact, like pi-subagents");
   assert.deepEqual(patch("teacher", undefined, fallback), { model: "def/model:off" });
   assert.deepEqual(patch("teacher"), {});
   assert.deepEqual(patch("constructor", undefined, fallback), { model: "def/model:off" }, "inherited names never match a role");

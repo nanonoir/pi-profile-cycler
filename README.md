@@ -136,10 +136,11 @@ The role is the agent name you launch, matched by its name, local name, alias or
 
 ## ⚠️ Good to know
 
-- Only **new direct** launches (`subagent` with an `agent`, or `tasks` / `chain` steps) are routed; agents already running keep their model.
+- Only **new** launches are routed; agents already running keep their model. `tasks` / `chain` launches are routed only when pi-subagents disables `workflow-scripts`; otherwise only direct `agent` launches are routed.
 - **Workflow scripts**, management actions and RPC/event launches keep pi-subagents' native model resolution.
+- If pi-subagents' builtin agents directory cannot be found, `/hprofile status` says so: builtin agents that run an external CLI may then receive the profile `default`, because their runner is unknown.
 - A route set here takes the place of the per-run model, so it overrides `agentOverrides` and the agent's own `model` for routed roles.
-- The extension does not load inside pi-subagents' child processes, so an async child keeps the model it was launched with. **Nested** subagents therefore use pi-subagents' own routing.
+- The extension is loaded inside pi-subagents' child processes but registers nothing there, so an async child keeps the model it was launched with. **Nested** subagents therefore use pi-subagents' own routing.
 - A routed model outside pi-subagents' `modelScope` or above its `maxThinking` fails the launch visibly; the profile check covers only Pi's registry and supported thinking.
 - On Windows Pi reserves `Alt+P`, which is why the shortcut is `Alt+M`.
 

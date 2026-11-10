@@ -5,7 +5,7 @@ import { parentRoute, parseConfig, type Config } from "./config.ts";
 import { discoverRoles, type Discovery } from "./discovery.ts";
 import { manage } from "./manage.ts";
 import { pickModel, type PickModelOptions } from "./model-picker.ts";
-import { isLaunch, routeSubagent } from "./routing.ts";
+import { externalRouteMessage, isExternalRole, isLaunch, routeSubagent } from "./routing.ts";
 import { ENTRY_TYPE, restoreSelection } from "./state.ts";
 import { writeConfig } from "./store.ts";
 import { message, preflight, switchProfile, type RegisteredModel } from "./switching.ts";
@@ -29,7 +29,7 @@ interface ActivateOptions {
   boundary?: boolean;
   /** Reload reapplication: an existing pending intent survives. */
   keepPending?: boolean;
-  /** Branch reconcile: route spawns to the profile as soon as preflight passes, even if the parent is busy. */
+  /** Branch reconcile: route launches to the profile as soon as preflight passes, even if the parent is busy. */
   routeNow?: boolean;
 }
 
@@ -61,6 +61,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
     try { return parseConfig(readConfig()); }
     catch (error) { if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return undefined; throw error; }
   };
+  const discover = (ctx: ExtensionContext): Discovery => options.discoverRoles?.(ctx) ?? discoverRoles(ctx.cwd, ctx.isProjectTrusted(), getAgentDir());
   let config: Config | undefined;
   /** No configuration file at all: nothing is routed until the first profile is created. */
   let missing = false;
@@ -91,7 +92,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
     pendingPersist = true;
     pendingRouted = false;
     status(ctx);
-    ctx.ui.notify(`Pending profile ${name} cancelled: ${reason}. Run /hprofile status to inspect the effective parent model.${blocked ? " Direct spawns blocked until you choose /hprofile <name>." : ""}`, "warning");
+    ctx.ui.notify(`Pending profile ${name} cancelled: ${reason}. Run /hprofile status to inspect the effective parent model.${blocked ? " Direct launches blocked until you choose /hprofile <name>." : ""}`, "warning");
   }
 
   async function settleInflight(): Promise<void> {
@@ -126,7 +127,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
         if (options.routeNow) pendingRouted = true;
         status(ctx);
         ctx.ui.notify(options.routeNow
-          ? `Profile ${name} routes spawns now; the parent model switches when the parent settles or the next run starts`
+          ? `Profile ${name} routes launches now; the parent model switches when the parent settles or the next run starts`
           : `Profile ${name} pending until the parent settles; current routes remain unchanged`, "info");
         return false;
       }
@@ -206,6 +207,14 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
     for (const [name, profile] of Object.entries(candidate.profiles)) {
       try { preflight(profile, ctx); } catch (error) { throw new Error(`profiles.${name}: ${message(error)}`); }
     }
+    if (Object.values(candidate.profiles).some(profile => Object.keys(profile.agents).length)) {
+      const { roles } = discover(ctx);
+      for (const [name, profile] of Object.entries(candidate.profiles)) {
+        for (const role of Object.keys(profile.agents)) {
+          if (isExternalRole(role, roles)) ctx.ui.notify(`profiles.${name}.agents.${role}: ${externalRouteMessage(role, role)}`, "warning");
+        }
+      }
+    }
     const previous = config;
     config = candidate;
     missing = false;
@@ -213,7 +222,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
       selected = undefined;
       cancelPending(ctx, "selected profile removed by reload");
       status(ctx);
-      ctx.ui.notify("Selected profile removed; choose /hprofile <name>. Direct spawns blocked until selection.", "warning");
+      ctx.ui.notify("Selected profile removed; choose /hprofile <name>. Direct launches blocked until selection.", "warning");
     } else if (selected) {
       // Every successful selected-route activation must be pinned on this branch.
       // The commit checks branch history, so existing selections are not duplicated.
@@ -246,7 +255,7 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
             activate: name => activate(name, ctx),
             selected: () => selected,
             pick: options.pickModel ?? pickModel,
-            discover: () => options.discoverRoles?.(ctx) ?? discoverRoles(ctx.cwd, ctx.isProjectTrusted(), getAgentDir()),
+            discover: () => discover(ctx),
           });
         }
         if (choice === "status") {
@@ -255,9 +264,10 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
           const fmt = (route: { model: string; thinking: string }) => `${route.model} (${route.thinking})`;
           const parent = profile ? parentRoute(profile) : undefined;
           const roles = profile ? Object.entries(profile.agents).map(([role, route]) => `  ${role}: ${fmt(route)}`).join("\n") : "";
-          const routes = profile ? `${profile.default ? `  default: ${fmt(profile.default)}\n` : ""}${roles || "  (no roles configured)"}` : "  unavailable (direct spawns blocked)";
+          const routes = profile ? `${profile.default ? `  default: ${fmt(profile.default)}\n` : ""}${roles || "  (no roles configured)"}` : "  unavailable (direct launches blocked)";
           const fallback = profile?.default ? "the default" : "native routing";
-          ctx.ui.notify(`Selected: ${selected ?? "unavailable"}${pending ? `; pending: ${pending}` : ""}\nEffective parent: ${actual} (${pi.getThinkingLevel()})\nConfigured parent: ${parent ? `${fmt(parent.route)} [from ${parent.source}]` : "unavailable"}\nNext direct spawns (explicit model/thinking in the request wins; otherwise):\n${routes}\nExisting agents keep their routes. Unconfigured and unknown roles use ${fallback}. Nested helpers unsupported.`, "info");
+          const builtinNote = discover(ctx).builtinMissing ? "\nWarning: pi-subagents builtin agents not found; external CLI builtins may receive the default." : "";
+          ctx.ui.notify(`Selected: ${selected ?? "unavailable"}${pending ? `; pending: ${pending}` : ""}\nEffective parent: ${actual} (${pi.getThinkingLevel()})\nConfigured parent: ${parent ? `${fmt(parent.route)} [from ${parent.source}]` : "unavailable"}\nNext direct launches (explicit model/thinking in the request wins; otherwise):\n${routes}\nExisting agents keep their routes. Unconfigured and unknown roles use ${fallback}. Nested helpers unsupported.${builtinNote}`, "info");
           return;
         }
         if (choice === "next") return await next(ctx);
@@ -297,13 +307,13 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
     // No profiles yet: pi-subagents routes natively. Workflows, actions and malformed input are not ours to guard.
     if (event.toolName !== "subagent" || missing || !isLaunch(event.input)) return;
     try {
-      if (applying) throw new Error("Profile switch in progress; retry spawn after it completes");
+      if (applying) throw new Error("Profile switch in progress; retry the launch after it completes");
       if (!config || !selected) throw new Error("No activated routing profile; choose /hprofile <name>");
       const profile = config.profiles[selected];
       preflight(profile, ctx);
-      const discovery = options.discoverRoles?.(ctx) ?? discoverRoles(ctx.cwd, ctx.isProjectTrusted(), getAgentDir());
       // Pi executes the original input object: assign its properties, never replace event.input itself.
-      Object.assign(event.input, routeSubagent(event.input, profile.agents, profile.default, discovery.roles));
+      // Discovery runs lazily, only when a launch without an explicit model needs routing.
+      Object.assign(event.input, routeSubagent(event.input, profile.agents, profile.default, () => discover(ctx).roles));
     } catch (error) { return { block: true, reason: `Profile routing blocked: ${message(error)}` }; }
   });
 }

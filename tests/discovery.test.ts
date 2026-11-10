@@ -151,10 +151,21 @@ test("symlinked directories are followed once", { skip: process.platform === "wi
   } finally { s.done(); }
 });
 
+test("builtin agents are found under <agentDir>/npm/node_modules/pi-subagents/agents; a missing directory is flagged", () => {
+  const s = sandbox();
+  try {
+    s.write(join(s.agentDir, "npm", "node_modules", "pi-subagents", "agents"), "scout.md", s.agent("scout", "runner:\n  type: external-cli\n"));
+    const found = discoverRoles(s.cwd, true, s.agentDir, { home: s.home, env: {} });
+    assert.deepEqual(found.roles.map(r => [r.name, r.source, r.external]), [["scout", "builtin", true]]);
+    assert.equal(found.builtinMissing, undefined);
+    assert.equal(s.discover().builtinMissing, true);
+  } finally { s.done(); }
+});
+
 test("missing directories yield nothing without diagnostics or creating files; the env list uses the platform delimiter", () => {
   const s = sandbox();
   try {
-    assert.deepEqual(s.discover(true, { env: { PI_SUBAGENT_EXTRA_AGENT_DIRS: `${join(s.root, "a")}${delimiter}${join(s.root, "b")}` } }), { roles: [], diagnostics: [] });
+    assert.deepEqual(s.discover(true, { env: { PI_SUBAGENT_EXTRA_AGENT_DIRS: `${join(s.root, "a")}${delimiter}${join(s.root, "b")}` } }), { roles: [], diagnostics: [], builtinMissing: true });
     assert.equal(existsSync(s.agentDir), false);
     assert.equal(existsSync(join(s.project, ".pi")), false);
   } finally { s.done(); }

@@ -20,7 +20,12 @@ export interface DiscoveredRole {
   external?: boolean;
 }
 export interface DiscoveryDiagnostic { source: DiscoveredRole["source"]; filePath: string; message: string }
-export interface Discovery { roles: DiscoveredRole[]; diagnostics: DiscoveryDiagnostic[] }
+export interface Discovery {
+  roles: DiscoveredRole[];
+  diagnostics: DiscoveryDiagnostic[];
+  /** The pi-subagents builtin agents directory was not found, so builtin agents (and their external runners) are unknown. */
+  builtinMissing?: boolean;
+}
 export interface DiscoverOptions {
   /** Home directory (`~/.agents`, `~` in scan dirs, and the stop for the project-root walk). */
   home?: string;
@@ -199,6 +204,7 @@ export function discoverRoles(cwd: string, trusted: boolean, agentDir = getAgent
   ].map(dir => resolve(dir));
   const projectDirs = root ? [...scanDirs(join(root, ".pi", "settings.json"), home), join(root, ".agents"), join(root, ".pi", "agents")].map(dir => resolve(dir)).filter(dir => !userDirs.includes(dir)) : [];
   const builtin = options.builtinDir ?? builtinAgentsDir(agentDir);
+  if (!builtin || !isDirectory(builtin)) found.builtinMissing = true;
   const merged = new Map<string, DiscoveredRole>();
   for (const [source, dirs] of [["builtin", builtin ? [builtin] : []], ["user", userDirs], ["project", projectDirs]] as const) {
     for (const dir of dirs) for (const role of scan(dir, source, found)) merged.set(role.name, role);

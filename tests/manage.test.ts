@@ -250,6 +250,23 @@ test("discovered roles and native labels, including configured roles that are go
   assert.deepEqual(agents.scout, { model: TERRA, thinking: "medium" });
 });
 
+test("external CLI roles are non-routable: no editing, commit refuses a route for one", async () => {
+  const h = harness();
+  const external = { name: "claude-code", external: true, source: "builtin" as const, filePath: "/b/cc.md", description: "d" };
+  h.setDiscovery({ roles: [external], diagnostics: [] });
+  h.script("balanced", "Edit", "claude-code: external CLI, not routed", "Discard", "Done");
+  await h.command("manage");
+  assert.equal(h.scriptLeft(), 0);
+  assert.ok(h.notifications.some(text => /external CLI/.test(text)));
+  assert.equal(h.writes.length, 0);
+  // A route for the external role sneaked in through the draft (e.g. another discovery result) is refused on Save.
+  const h2 = harness();
+  h2.script("balanced", "Edit", "reviewer", "Change", TERRA, "high", () => h2.setDiscovery({ roles: [{ ...external, name: "reviewer" }], diagnostics: [] }), "Save", "Discard", true, "Done");
+  await h2.command("manage");
+  assert.equal(h2.writes.length, 0);
+  assert.ok(h2.notifications.some(text => /Not saved: agents\.reviewer: profile routes reviewer, but reviewer runs an external CLI/.test(text)));
+});
+
 test("roles of a profile with a default show \"default\"", async () => {
   const h = harness();
   h.setDiscovery({ roles: [{ name: "scout", source: "project", filePath: "/p/scout.md", description: "d" }], diagnostics: [] });

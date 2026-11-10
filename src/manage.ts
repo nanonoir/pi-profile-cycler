@@ -6,6 +6,7 @@ import type { Discovery } from "./discovery.ts";
 import { createProfile, deleteProfile, setDefaultProfile, setRoute, type RouteTarget } from "./editing.ts";
 import { modelId, type PickModelOptions } from "./model-picker.ts";
 import { serializeConfig } from "./store.ts";
+import { externalRouteMessage, isExternalRole } from "./routing.ts";
 import { message, resolveRoute, type RegisteredModel } from "./switching.ts";
 
 export interface ManageDeps {
@@ -42,8 +43,14 @@ function changedRoutes(base: Config | undefined, next: Config, name: string): Ar
 /** Persist `next`, then apply it through the reload path. Nothing is written when the file changed, validation or preflight fails. */
 async function commit(ctx: ExtensionContext, deps: ManageDeps, base: Config | undefined, next: Config, edited?: string): Promise<Outcome> {
   try {
-    if (edited) for (const [label, route] of changedRoutes(base, next, edited)) {
-      try { resolveRoute(route, ctx); } catch (error) { throw new Error(`${label}: ${message(error)}`); }
+    if (edited) {
+      const changed = changedRoutes(base, next, edited);
+      const roles = changed.some(([label]) => label.startsWith("agents.")) ? deps.discover().roles : [];
+      for (const [label, route] of changed) {
+        const role = label.startsWith("agents.") ? label.slice("agents.".length) : undefined;
+        if (role !== undefined && isExternalRole(role, roles)) throw new Error(`${label}: ${externalRouteMessage(role, role)}`);
+        try { resolveRoute(route, ctx); } catch (error) { throw new Error(`${label}: ${message(error)}`); }
+      }
     }
     const onDisk = deps.load();
     if ((onDisk && serializeConfig(onDisk)) !== (base && serializeConfig(base))) throw new Error("profile-cycler.json changed on disk; reopen /hprofile manage");
@@ -92,6 +99,15 @@ async function editRoute(ctx: ExtensionContext, deps: ManageDeps, draft: Config,
   return draft;
 }
 
+/** External CLI agents take a CLI alias, not a Pi model: no route can be set, only a stale one removed. */
+async function dropExternalRoute(ctx: ExtensionContext, draft: Config, name: string, role: string): Promise<Config> {
+  if (!draft.profiles[name].agents[role]) { ctx.ui.notify(`${role} runs an external CLI; its model is not a Pi model, so it cannot be routed`, "info"); return draft; }
+  const action = await ctx.ui.select(`${role}: external CLI, not routed`, ["Remove"]);
+  if (action !== "Remove") return draft;
+  try { return setRoute(draft, name, { role }, undefined); }
+  catch (error) { ctx.ui.notify(`Cannot edit: ${message(error)}`, "error"); return draft; }
+}
+
 /** Returns once the draft is saved (or saved but not applied), or abandoned. Without `base` the draft becomes the first configuration. */
 async function editProfile(ctx: ExtensionContext, deps: ManageDeps, base: Config | undefined, name: string, start: Config): Promise<void> {
   const discovery = deps.discover();
@@ -103,17 +119,19 @@ async function editProfile(ctx: ExtensionContext, deps: ManageDeps, base: Config
   const dirty = () => JSON.stringify(draft) !== JSON.stringify(base);
   for (;;) {
     const profile = draft.profiles[name];
-    const entries = new Map<string, { target: RouteTarget; title: string }>();
-    entries.set(`Default: ${profile.default ? fmt(profile.default) : "not set"}`, { target: "default", title: "Default" });
-    entries.set(`Orchestrator: ${profile.main ? fmt(profile.main) : "default"}`, { target: "main", title: "Orchestrator" });
+    const entries = new Map<string, { target: RouteTarget; title: string; external: boolean }>();
+    entries.set(`Default: ${profile.default ? fmt(profile.default) : "not set"}`, { target: "default", title: "Default", external: false });
+    entries.set(`Orchestrator: ${profile.main ? fmt(profile.main) : "default"}`, { target: "main", title: "Orchestrator", external: false });
     const roles = [...new Set([...native.keys(), ...Object.keys(profile.agents)])];
     for (const role of roles) {
       const found = native.get(role);
       const route = profile.agents[role];
-      const state = route ? fmt(route)
+      const external = found?.external === true;
+      const state = external ? `external CLI, not routed${route ? ` (blocking route: ${fmt(route)})` : ""}`
+        : route ? fmt(route)
         : profile.default ? "default"
         : found?.model ? `native: ${found.model}` : "native";
-      entries.set(`${role}: ${state}${found ? "" : " [not discovered]"}`, { target: { role }, title: role });
+      entries.set(`${role}: ${state}${found ? "" : " [not discovered]"}`, { target: { role }, title: role, external });
     }
     const options = [...entries.keys(), "Save", "Discard"];
     const answer = await ctx.ui.select(`Edit ${name}${dirty() ? " (unsaved changes)" : ""}`, options);
@@ -127,7 +145,8 @@ async function editProfile(ctx: ExtensionContext, deps: ManageDeps, base: Config
       if (!dirty() || await ctx.ui.confirm("Discard changes", `Discard unsaved changes to ${name}?`)) return;
     } else {
       const entry = entries.get(answer);
-      if (entry) draft = await editRoute(ctx, deps, draft, name, entry.target, entry.title);
+      if (entry?.external) draft = await dropExternalRoute(ctx, draft, name, entry.title);
+      else if (entry) draft = await editRoute(ctx, deps, draft, name, entry.target, entry.title);
     }
   }
 }
