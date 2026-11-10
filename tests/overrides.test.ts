@@ -11,7 +11,7 @@ test("replacing a pending tree intent cannot leave its unverified early route ac
   await h.command("codex");
   h.failModel("gpt-6.1-sol"); h.setIdle(true); await h.emit("agent_settled");
   assert.match(h.statuses.at(-1)!, /unavailable/);
-  assert.equal((await h.emit("tool_call", { toolName: "agent_spawn", input: { agents: [] } }) as { block: boolean }).block, true);
+  assert.equal((await h.emit("tool_call", { toolName: "subagent", input: { agent: "implementer", task: "t" } }) as { block: boolean }).block, true);
 });
 
 test("reload fulfilling a pending branch default pins it before clearing the pending intent", async () => {
@@ -51,9 +51,10 @@ test("manual parent model override is visible and does not change selected futur
   assert.match(notice, /Selected: balanced/);
   assert.match(notice, /Effective parent: claude-code\/claude-opus-5-5/);
   assert.match(notice, /Configured parent: openai\/gpt-6.1-sol/);
-  const input = { agents: [{ profile: "implementer", job: "fixture" }] };
-  await h.emit("tool_call", { toolName: "agent_spawn", input });
-  assert.equal((input.agents[0] as Record<string, unknown>).model, h.config.profiles.balanced.agents.implementer.model);
+  const input: Record<string, unknown> = { agent: "implementer", task: "fixture" };
+  await h.emit("tool_call", { toolName: "subagent", input });
+  const implementer = h.config.profiles.balanced.agents.implementer;
+  assert.equal(input.model, `${implementer.model}:${implementer.thinking}`);
 });
 
 test("additional profiles work, but command names cannot shadow selectable profiles", () => {
@@ -83,9 +84,12 @@ test("default-only profile switches the parent to default and routes unconfigure
   assert.match(notice, /default: claude-code\/claude-opus-5-5 \(medium\)/);
   assert.match(notice, /reviewer: antigravity\/gemini-3-8-flash \(high\)/);
   assert.match(notice, /Unconfigured and unknown roles use the default/);
-  const input = { agents: [{ name: "teacher" }, { name: "reviewer", model: "user/m" }] };
-  await h.emit("tool_call", { toolName: "agent_spawn", input });
-  assert.deepEqual(input.agents, [{ name: "teacher", model: "claude-code/claude-opus-5-5", thinking: "medium" }, { name: "reviewer", model: "user/m" }]);
+  const teacher: Record<string, unknown> = { agent: "teacher", task: "t" };
+  const reviewer: Record<string, unknown> = { agent: "reviewer", task: "t", model: "user/m" };
+  await h.emit("tool_call", { toolName: "subagent", input: teacher });
+  await h.emit("tool_call", { toolName: "subagent", input: reviewer });
+  assert.deepEqual(teacher, { agent: "teacher", task: "t", model: "claude-code/claude-opus-5-5:medium" });
+  assert.deepEqual(reviewer, { agent: "reviewer", task: "t", model: "user/m" });
   await h.command("balanced"); await h.command("status");
   assert.match(h.notifications.at(-1)!, /\[from main\][\s\S]*use native routing/);
 });

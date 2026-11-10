@@ -81,7 +81,7 @@ Make the profile cycler route the subagents of [`pi-subagents`](https://www.npmj
 ## Progress
 
 - [x] Phase 1 — child guard
-- [ ] Phase 2 — `subagent` routing
+- [x] Phase 2 — `subagent` routing
 - [ ] Phase 3 — discovery
 - [ ] Phase 4 — deps, docs, version
 - [ ] Phase 5 — review and closure

@@ -31,19 +31,39 @@ test("commands and shortcut cycle A B C A, menu and status show effective routes
   h.setAnswer(undefined); await h.command("");
 });
 
-test("direct tool hook changes original argument object only for agent_spawn; all-or-nothing preflight", async () => {
+const routed = (route: { model: string; thinking: string }) => `${route.model}:${route.thinking}`;
+
+test("direct tool hook changes the original argument object only for subagent launches; all-or-nothing preflight", async () => {
   const h = harness(); await h.emit("session_start");
-  const input = { agents: [{ profile: "implementer", job: "build" }, { name: "teacher", job: "teach" }, { profile: "reviewer", job: "check", model: "user/model" }], failFast: true } as { agents: Record<string, unknown>[]; failFast: boolean };
+  const implementer = routed(h.config.profiles.balanced.agents.implementer);
+  const input: Record<string, unknown> = { agent: "implementer", task: "build", async: false };
   await h.emit("tool_call", { toolName: "other", input });
-  assert.equal(input.agents[0].model, undefined);
-  assert.equal(await h.emit("tool_call", { toolName: "agent_spawn", input }), undefined);
-  assert.equal(input.agents[0].model, h.config.profiles.balanced.agents.implementer.model);
-  assert.deepEqual(input.agents[1], { name: "teacher", job: "teach" });
-  assert.equal(input.agents[2].model, "user/model"); // explicit request wins
+  assert.equal(input.model, undefined);
+  assert.equal(await h.emit("tool_call", { toolName: "subagent", input }), undefined);
+  assert.deepEqual(input, { agent: "implementer", task: "build", async: false, model: implementer });
+  const teacher: Record<string, unknown> = { agent: "teacher", task: "teach" };
+  const explicit: Record<string, unknown> = { agent: "reviewer", task: "check", model: "user/model" };
+  const status: Record<string, unknown> = { action: "status", agent: "implementer" };
+  for (const call of [teacher, explicit, status]) await h.emit("tool_call", { toolName: "subagent", input: call });
+  assert.deepEqual(teacher, { agent: "teacher", task: "teach" });
+  assert.equal(explicit.model, "user/model"); // explicit request wins
+  assert.equal(status.model, undefined);
   h.models.splice(h.models.findIndex(model => model.provider === "antigravity"), 1);
-  const original = structuredClone(input);
-  assert.equal((await h.emit("tool_call", { toolName: "agent_spawn", input }) as { block: boolean }).block, true);
-  assert.deepEqual(input, original);
+  const blocked: Record<string, unknown> = { agent: "implementer", task: "again" };
+  assert.equal((await h.emit("tool_call", { toolName: "subagent", input: blocked }) as { block: boolean }).block, true);
+  assert.deepEqual(blocked, { agent: "implementer", task: "again" });
+  assert.equal(await h.emit("tool_call", { toolName: "subagent", input: { action: "status" } }), undefined, "management calls are never blocked");
+});
+
+test("launch roles resolve through discovered aliases and external-runner agents are never given the default", async () => {
+  const h = harness(); await h.emit("session_start");
+  h.setDiscovery({ roles: [{ name: "pkg.implementer", localName: "implementer", source: "user", filePath: "/a", description: "d" }, { name: "claude-code", external: true, source: "user", filePath: "/b", description: "d" }], diagnostics: [] });
+  const qualified: Record<string, unknown> = { agent: "pkg.implementer", task: "t" };
+  await h.emit("tool_call", { toolName: "subagent", input: qualified });
+  assert.equal(qualified.model, routed(h.config.profiles.balanced.agents.implementer));
+  const external: Record<string, unknown> = { agent: "claude-code", task: "t" };
+  assert.equal(await h.emit("tool_call", { toolName: "subagent", input: external }), undefined);
+  assert.equal(external.model, undefined);
 });
 
 test("switch failure/clamping rolls back and does not persist a false selection", async () => {
@@ -63,9 +83,9 @@ test("busy activation is queued until settled, not agent_end, and old routes rem
   const count = h.calls.length;
   await h.emit("agent_end"); assert.equal(h.calls.length, count);
   await h.emit("agent_settled"); assert.equal(h.calls.length, count);
-  const input = { agents: [{ profile: "implementer", job: "old" }] };
-  await h.emit("tool_call", { toolName: "agent_spawn", input });
-  assert.equal((input.agents[0] as Record<string, unknown>).model, h.config.profiles.balanced.agents.implementer.model);
+  const input: Record<string, unknown> = { agent: "implementer", task: "old" };
+  await h.emit("tool_call", { toolName: "subagent", input });
+  assert.equal(input.model, routed(h.config.profiles.balanced.agents.implementer));
   h.setIdle(true); await h.emit("agent_settled");
   assert.match(h.statuses.at(-1)!, /^profile: claude$/);
 });
@@ -81,7 +101,7 @@ test("restoration respects branch, reload/resume/fork and independent extension 
   assert.match(a.statuses.at(-1)!, /balanced/); assert.equal(a.branch().length, common.length);
   a.setBranch([{ type: "custom", customType: ENTRY_TYPE, data: { version: 1, profile: "removed" } }]);
   await a.emit("session_start"); assert.match(a.statuses.at(-1)!, /unavailable/);
-  assert.equal((await a.emit("tool_call", { toolName: "agent_spawn", input: { agents: [] } }) as { block: boolean }).block, true);
+  assert.equal((await a.emit("tool_call", { toolName: "subagent", input: { agent: "implementer", task: "t" } }) as { block: boolean }).block, true);
 });
 
 const profiles = (branch: unknown[]) => (branch as { data: { profile: string } }[]).map(entry => entry.data.profile);
@@ -125,9 +145,9 @@ test("busy session_tree routes spawns to the branch profile now and applies the 
   await h.emit("session_tree");
   assert.match(h.statuses.at(-1)!, /profile: claude \(pending: claude\)/);
   assert.equal(h.model(), before, "parent untouched while busy");
-  const input = { agents: [{ profile: "implementer", job: "x" }] };
-  assert.equal(await h.emit("tool_call", { toolName: "agent_spawn", input }), undefined);
-  assert.equal((input.agents[0] as Record<string, unknown>).model, h.config.profiles.claude.agents.implementer.model);
+  const input: Record<string, unknown> = { agent: "implementer", task: "x" };
+  assert.equal(await h.emit("tool_call", { toolName: "subagent", input }), undefined);
+  assert.equal(input.model, routed(h.config.profiles.claude.agents.implementer));
   await h.emit("before_agent_start"); // the next parent request is the safe boundary; isIdle() is still false
   assert.equal(h.model().id, "claude-opus-5-5");
   assert.match(h.statuses.at(-1)!, /^profile: claude$/);
@@ -195,7 +215,7 @@ test("busy tree reconcile whose parent apply fails clears the early route and bl
     assert.match(h.notifications.at(-1)!, /Pending profile \w+ cancelled.*Direct spawns blocked/);
     assert.doesNotMatch(h.notifications.at(-1)!, /Parent model unchanged/);
     assert.match(h.statuses.at(-1)!, /^profile: unavailable$/);
-    assert.equal((await h.emit("tool_call", { toolName: "agent_spawn", input: { agents: [] } }) as { block: boolean }).block, true);
+    assert.equal((await h.emit("tool_call", { toolName: "subagent", input: { agent: "implementer", task: "t" } }) as { block: boolean }).block, true);
   };
   const saved = harness(); await saved.emit("session_start");
   saved.setIdle(false);

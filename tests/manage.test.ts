@@ -30,10 +30,10 @@ test("first run without a config file: native routing, then manage creates and a
   assert.match(h.statuses.at(-1)!, /profile: none \(\/hprofile manage\)/);
   assert.match(h.notifications.join("\n"), /no profiles yet/);
   assert.ok(!h.notifications.some(text => /Profile initialization/.test(text)));
-  // Without a config nothing is blocked or injected: mavam routes natively.
-  const input = { agents: [{ name: "implementer", job: "x" }] };
-  assert.equal(await h.emit("tool_call", { toolName: "agent_spawn", input }), undefined);
-  assert.deepEqual(input.agents, [{ name: "implementer", job: "x" }]);
+  // Without a config nothing is blocked or injected: pi-subagents routes natively.
+  const input: Record<string, unknown> = { agent: "implementer", task: "x" };
+  assert.equal(await h.emit("tool_call", { toolName: "subagent", input }), undefined);
+  assert.deepEqual(input, { agent: "implementer", task: "x" });
   await h.command("next");
   assert.match(h.notifications.at(-1)!, /No profiles yet; run \/hprofile manage/);
 
@@ -45,8 +45,8 @@ test("first run without a config file: native routing, then manage creates and a
   assert.deepEqual(JSON.parse(h.text()), { version: 2, defaultProfile: "fast", order: ["fast"], profiles: { fast: { default: { model: OPUS, thinking: "medium" } } } });
   assert.match(h.statuses.at(-1)!, /^profile: fast$/);
   assert.equal(`${h.model().provider}/${h.model().id}`, OPUS);
-  assert.equal(await h.emit("tool_call", { toolName: "agent_spawn", input }), undefined);
-  assert.deepEqual(input.agents, [{ name: "implementer", job: "x", model: OPUS, thinking: "medium" }]);
+  assert.equal(await h.emit("tool_call", { toolName: "subagent", input }), undefined);
+  assert.deepEqual(input, { agent: "implementer", task: "x", model: `${OPUS}:medium` });
 });
 
 test("first run: Done or Esc writes nothing; a file created meanwhile is not overwritten", async () => {

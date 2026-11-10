@@ -4,7 +4,7 @@ import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { THINKING_LEVELS, type ThinkingLevel } from "./config.ts";
 
 // Read-only mirror of pi-agents' `discoverProfiles` (a dev dependency only); keep the validation rules in step with it.
-export interface DiscoveredRole { name: string; source: "user" | "project"; filePath: string; description: string; model?: string; thinking?: ThinkingLevel }
+export interface DiscoveredRole { name: string; source: "user" | "project"; filePath: string; description: string; model?: string; thinking?: ThinkingLevel; localName?: string; aliases?: string[]; external?: boolean }
 export interface DiscoveryDiagnostic { source: "user" | "project"; filePath: string; message: string }
 export interface Discovery { roles: DiscoveredRole[]; diagnostics: DiscoveryDiagnostic[] }
 

@@ -5,7 +5,7 @@ import { parentRoute, parseConfig, type Config } from "./config.ts";
 import { discoverRoles, type Discovery } from "./discovery.ts";
 import { manage } from "./manage.ts";
 import { pickModel, type PickModelOptions } from "./model-picker.ts";
-import { routeSpawn } from "./routing.ts";
+import { isLaunch, routeSubagent } from "./routing.ts";
 import { ENTRY_TYPE, restoreSelection } from "./state.ts";
 import { writeConfig } from "./store.ts";
 import { message, preflight, switchProfile, type RegisteredModel } from "./switching.ts";
@@ -294,15 +294,16 @@ export function registerCycler(pi: ExtensionAPI, options: CyclerOptions = {}): v
   pi.on("agent_settled", async (_event, ctx) => { await applyPending(ctx, false); });
 
   pi.on("tool_call", async (event, ctx) => {
-    if (event.toolName !== "agent_spawn" || missing) return; // no profiles yet: mavam routes natively
+    // No profiles yet: pi-subagents routes natively. Workflows, actions and malformed input are not ours to guard.
+    if (event.toolName !== "subagent" || missing || !isLaunch(event.input)) return;
     try {
       if (applying) throw new Error("Profile switch in progress; retry spawn after it completes");
       if (!config || !selected) throw new Error("No activated routing profile; choose /hprofile <name>");
       const profile = config.profiles[selected];
       preflight(profile, ctx);
-      const routed = routeSpawn(event.input, profile.agents, profile.default);
-      // Pi executes the original input object: mutate its property, not event.input itself.
-      event.input.agents = routed.agents;
+      const discovery = options.discoverRoles?.(ctx) ?? discoverRoles(ctx.cwd, ctx.isProjectTrusted(), getAgentDir());
+      // Pi executes the original input object: assign its properties, never replace event.input itself.
+      Object.assign(event.input, routeSubagent(event.input, profile.agents, profile.default, discovery.roles));
     } catch (error) { return { block: true, reason: `Profile routing blocked: ${message(error)}` }; }
   });
 }

@@ -9,22 +9,23 @@ test("published Pi tool pipeline executes in-place routed arguments and blocks f
   const h = harness(); await h.emit("session_start");
   let executed: unknown;
   const tool: AgentTool = {
-    name: "agent_spawn", label: "contract fixture", description: "No agents or models are started",
-    parameters: { type: "object", properties: { agents: { type: "array", items: { type: "object" } } }, required: ["agents"] },
+    name: "subagent", label: "contract fixture", description: "No agents or models are started",
+    parameters: { type: "object", properties: { agent: { type: "string" }, task: { type: "string" }, model: { type: "string" } }, required: ["agent", "task"] },
     execute: async (_id, args) => { executed = args; return { content: [{ type: "text", text: "fixture executed" }], details: {} }; },
   };
-  const call = { type: "toolCall" as const, id: "test", name: "agent_spawn", arguments: { agents: [{ profile: "implementer", job: "fixture" }] } };
+  const call = { type: "toolCall" as const, id: "test", name: "subagent", arguments: { agent: "implementer", task: "fixture" } };
   const options = {
     tools: [tool], context: { messages: [], tools: [tool], systemPrompt: "" },
     assistantMessage: {
       role: "assistant" as const, content: [call], api: "openai-responses" as const, provider: "test", model: "test", stopReason: "toolUse" as const, timestamp: 0,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
     },
-    beforeToolCall: async ({ args }: { args: unknown }) => await h.emit("tool_call", { toolName: "agent_spawn", input: args as Record<string, unknown> }) as { block: boolean; reason: string } | undefined,
+    beforeToolCall: async ({ args }: { args: unknown }) => await h.emit("tool_call", { toolName: "subagent", input: args as Record<string, unknown> }) as { block: boolean; reason: string } | undefined,
   };
   const result = await runToolCall(call, options);
   assert.equal(result.isError, false);
-  assert.deepEqual(executed, { agents: [{ profile: "implementer", job: "fixture", ...h.config.profiles.balanced.agents.implementer }] });
+  const route = h.config.profiles.balanced.agents.implementer;
+  assert.deepEqual(executed, { agent: "implementer", task: "fixture", model: `${route.model}:${route.thinking}` });
   executed = undefined;
   h.models.splice(h.models.findIndex(model => model.provider === "antigravity"), 1);
   const blocked = await runToolCall(call, options);
