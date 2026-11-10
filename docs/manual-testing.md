@@ -22,11 +22,16 @@ Record Pi and mavam versions, OS/terminal, registered model IDs, authentication 
 | Two windows | Different selections remain isolated. |
 | `/resume`, `/reload`, `/fork`, `/tree` | Active branch selection restored; no duplicate custom entries from restoration; status never claims a failed activation. |
 | Manual `/model` | Status distinguishes real parent route from selected future-spawn profile. |
+| `/hprofile manage` → New profile with only a default | Fuzzy search (`opu`) narrows models; only supported thinking levels offered; Save writes `profile-cycler.json` + `.bak`; profile appears in Alt+M cycle. |
+| Edit orchestrator and one role, Save | Status shows `[from main]`/role routes; next direct spawn of that role uses it; other roles use default. |
+| Edit while parent generates, Save | File saved, notice to run `/hprofile reload`; nothing applied mid-run. |
+| Delete default/active profile | Replacement required; last profile refused; active switch only after successful reload. |
+| Project agents | Trusted project `.pi/agents` roles listed (override user by name); untrusted project not listed. |
 | Helper from child with `spawn: true` | Record actual route and hook path. Unsupported until stable hook and real execution prove otherwise. |
 
 ## Safety checks
 
-- Compare disposable agent Markdown and unrelated configuration before/after; no writes from the extension.
+- Compare disposable agent Markdown and unrelated configuration before/after; the only writes are `profile-cycler.json` and `.bak` after an explicit Save.
 - Confirm no requests, telemetry, quota fallback, periodic jobs or credential reads originate from the cycler.
 - Keep only minimal redacted metadata as evidence. Stop the disposable processes and delete only task-owned temporary resources.
 

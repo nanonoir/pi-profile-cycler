@@ -6,13 +6,26 @@ The extension manages model routes, not orchestration. Pi owns the parent conver
 
 | Module | Responsibility |
 |---|---|
-| `config.ts` | Pure schema validation, duplicate-key detection and content-based legacy migration. |
-| `routing.ts` | Pure atomic batch transformation; known roles change only model/thinking. |
+| `config.ts` | Pure schema validation, duplicate-key detection, `parentRoute` (main, else default) and content-based legacy migration. |
+| `routing.ts` | Pure atomic batch transformation; only model/thinking change. |
 | `switching.ts` | Real registry and model-thinking preflight; parent switch/readback/rollback; commit only after success. |
 | `state.ts` | Last valid selection on the active branch; custom-entry format/version. |
-| `index.ts` | Pi registration, read-only config loading, commands/status, lifecycle reconciliation and pending idle activation. |
+| `discovery.ts` | Read-only listing of user and trusted project agent Markdown, mirroring mavam 0.39.0 `discoverProfiles`. |
+| `editing.ts` | Pure immutable profile operations (create, delete, set route, set default profile), each returning a validated config. |
+| `store.ts` | Stable serialization and the only file writer: validate, `.bak`, temp file, rename. |
+| `model-picker.ts` | Fuzzy-search model picker (`ctx.ui.custom` + pi-tui), plain `select` fallback. |
+| `manage.ts` | `/hprofile manage` dialog flow over injected load/write/reload/activate/pick/discover. |
+| `index.ts` | Pi registration, config loading, commands/status, lifecycle reconciliation and pending idle activation. |
 
-Importing does not register or read configuration. Calling the default export registers one extension. The root file forwards to `src/index.ts`; package metadata declares only that root entrypoint. No runtime module writes files directly.
+Importing does not register or read configuration. Calling the default export registers one extension. The root file forwards to `src/index.ts`; package metadata declares only that root entrypoint. The only runtime file write is `profile-cycler.json` (and its `.bak`) through `store.ts`, triggered by an explicit Save in `/hprofile manage`. Agent Markdown is never written.
+
+## Profiles and precedence
+
+A profile may define `default`, `main` and any `agents` roles; it must define `main` or `default`. The orchestrator uses `main`, else `default`. For each direct spawn and each field (`model`, `thinking`): explicit request value → profile role route → profile `default` → native mavam (nothing injected). With a `default`, every direct subagent is routed, including roles that are not configured or not discovered.
+
+## Profile editor
+
+`/hprofile manage` edits an in-memory draft and writes only on Save. Before writing it validates the schema and preflights the edited profile's routes against Pi's registry and supported thinking; reload still preflights as before. Saving goes through the same reload path as `/hprofile reload`; if Pi is busy the file is saved and the user is told to reload. The menu re-reads the file each pass so a saved-but-unapplied edit is not overwritten by stale state. Model choices come from `modelRegistry.getAvailable()`, thinking from `getSupportedThinkingLevels`. Formatting of a hand-edited file is not preserved after a Save.
 
 ## Activation transaction
 
@@ -26,7 +39,7 @@ Pi model changes themselves produce history entries. The cycler cannot erase fai
 
 ## Direct dispatch
 
-Only `tool_call` for exact tool name `agent_spawn` is intercepted. Compute the entire routed agents array before touching the original input. Then assign only its `agents` property in place, as required by the published SDK execution contract. Explicit request `model`/`thinking` win per field; configured roles fill only omitted fields (owner decision 2026-11-09, replacing the PRD's initial `profile-wins`). Unknown `profile` never falls back to `name`; unknown roles use native mavam behavior. Failed preflight blocks the spawn without partial injection.
+Only `tool_call` for exact tool name `agent_spawn` is intercepted. Compute the entire routed agents array before touching the original input. Then assign only its `agents` property in place, as required by the published SDK execution contract. Explicit request `model`/`thinking` win per field; configured roles, then the profile `default`, fill only omitted fields (owner decisions 2026-11-09 and 2026-11-10, replacing the PRD's initial `profile-wins`). Unknown `profile` never falls back to `name`; without a `default`, unknown roles use native mavam behavior. Failed preflight blocks the spawn without partial injection.
 
 ## Session identity and overrides
 
@@ -38,7 +51,7 @@ Each extension instance owns its selected/config/pending state. Session lifecycl
 
 ## Evidence and non-goals
 
-Original v1 behavior was characterized before refactoring and preserved byte-for-byte in fixtures: global Markdown writes and shared `active`, inverted historical names, missing Gemini roles; `test-local.cjs` was absent. Runtime writes were removed, not wrapped.
+Original v1 behavior was characterized before refactoring and preserved byte-for-byte in fixtures: global Markdown writes and shared `active`, inverted historical names, missing Gemini roles; `test-local.cjs` was absent. Runtime writes were removed, not wrapped; the later profile editor reintroduced a single, explicit write path limited to the cycler's own JSON.
 
 Published Pi SDK 1.5.0 tool execution and in-memory SessionManager are exercised without LLMs; extension tests use a mock API around those contracts. Actual mavam 0.39.0 spawn/helper resolvers are tested with disposable agent/project directories; its tool scheduler and real agent execution are not exercised. See [compatibility evidence](compatibility.md) for exact revisions and nested helper limitations. No claim of real provider or Windows TUI certification follows from these tests. The package is MIT-licensed and still marked private (not published to npm); publication and real smoke are separate gates.
 
