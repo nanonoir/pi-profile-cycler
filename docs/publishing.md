@@ -22,7 +22,7 @@ Reference: [Pi packages](https://github.com/earendil-works/pi/blob/main/packages
 6. Verify the registry before any tag or release:
 
    ```powershell
-   npm view pi-profile-cycler@1.2.0 version dist.integrity dist.tarball pi --json --registry=https://registry.npmjs.org/
+   npm view pi-profile-cycler@1.2.1 version dist.integrity dist.tarball pi --json --registry=https://registry.npmjs.org/
    ```
 
 7. Test the published version in a disposable agent directory and project (PowerShell; no personal settings or credentials are copied):
@@ -36,7 +36,7 @@ Reference: [Pi packages](https://github.com/earendil-works/pi/blob/main/packages
      $env:PI_CODING_AGENT_DIR = Join-Path $sandbox "agent"
      pi install npm:pi-subagents@0.87.0
      if ($LASTEXITCODE -ne 0) { throw "pi-subagents installation failed" }
-     pi install npm:pi-profile-cycler@1.2.0
+     pi install npm:pi-profile-cycler@1.2.1
      if ($LASTEXITCODE -ne 0) { throw "Profile cycler installation failed" }
      pi list
      if ($LASTEXITCODE -ne 0) { throw "Package listing failed" }
@@ -44,9 +44,9 @@ Reference: [Pi packages](https://github.com/earendil-works/pi/blob/main/packages
      if ($LASTEXITCODE -ne 0) { throw "Pi smoke session failed" }
      # In Pi: /hprofile, /hprofile status, then exit.
      # Provider-backed routing requires separate, explicitly configured credentials.
-     pi update npm:pi-profile-cycler@1.2.0
+     pi update npm:pi-profile-cycler@1.2.1
      if ($LASTEXITCODE -ne 0) { throw "Package reconciliation failed" }
-     pi remove npm:pi-profile-cycler@1.2.0
+     pi remove npm:pi-profile-cycler@1.2.1
      if ($LASTEXITCODE -ne 0) { throw "Package removal failed" }
    } finally {
      $env:PI_CODING_AGENT_DIR = $previousAgentDir

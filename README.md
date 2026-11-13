@@ -64,7 +64,7 @@ pi update npm:pi-profile-cycler    # or: pi update --extensions  (all packages)
 pi remove npm:pi-profile-cycler
 ```
 
-`pi update` without a target updates Pi itself, not packages. A version-pinned source such as `npm:pi-profile-cycler@1.2.0` or a git tag stays pinned across updates. Removing the package does not delete your `profile-cycler.json`.
+`pi update` without a target updates Pi itself, not packages. A version-pinned source such as `npm:pi-profile-cycler@1.2.1` or a git tag stays pinned across updates. Removing the package does not delete your `profile-cycler.json`.
 
 **2. Create your first profile**: open Pi and run `/hprofile manage` → **+ New profile** → pick a default model → **Save**. It is activated right away.
 

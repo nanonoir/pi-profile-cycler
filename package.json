@@ -1,15 +1,31 @@
 {
   "name": "pi-profile-cycler",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Session-local model profiles for Pi and the pi-subagents subagent tool",
-  "keywords": ["pi-package", "pi", "pi-extension", "pi-subagents", "model-profiles"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "pi-subagents",
+    "model-profiles"
+  ],
   "homepage": "https://github.com/nanonoir/pi-profile-cycler#readme",
-  "bugs": { "url": "https://github.com/nanonoir/pi-profile-cycler/issues" },
-  "repository": { "type": "git", "url": "git+https://github.com/nanonoir/pi-profile-cycler.git" },
+  "bugs": {
+    "url": "https://github.com/nanonoir/pi-profile-cycler/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nanonoir/pi-profile-cycler.git"
+  },
   "author": "Nahuel Nicolas Noir (https://github.com/nanonoir)",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "license": "MIT",
-  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "files": [
     "pi-profile-cycler.ts",
