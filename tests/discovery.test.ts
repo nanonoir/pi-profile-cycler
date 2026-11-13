@@ -140,6 +140,26 @@ test("settings agentScanDirs add user dirs (literal and one * segment) below the
   } finally { s.done(); }
 });
 
+test("settings agentExcludeDirs (~, relative to the settings dir, project) drop user/project dirs, subtrees and scan dirs, never builtin", () => {
+  const s = sandbox();
+  try {
+    const builtinDir = join(s.root, "builtin");
+    s.write(builtinDir, "scout.md", s.agent("scout"));
+    s.write(join(s.home, ".agents", "brandkit"), "SKILL.md", s.agent("brandkit"));
+    s.write(s.userDir, "keep.md", s.agent("keep"));
+    s.write(join(s.userDir, "drafts"), "draft.md", s.agent("draft"));
+    s.write(join(s.root, "packs", "one", "agents"), "o.md", s.agent("o"));
+    s.write(s.projectPi, "p.md", s.agent("p"));
+    s.write(join(s.projectAgents, "shared"), "skill.md", s.agent("projskill"));
+    s.write(s.agentDir, "settings.json", JSON.stringify({ subagents: {
+      agentScanDirs: [join(s.root, "packs", "*", "agents")],
+      agentExcludeDirs: ["~/.agents", "agents/drafts", join(s.root, "packs", "one"), builtinDir],
+    } }));
+    s.write(join(s.project, ".pi"), "settings.json", JSON.stringify({ subagents: { agentExcludeDirs: ["../.agents/shared"] } }));
+    assert.deepEqual(summary(s.discover(true, { builtinDir }).roles), [["p", "project"], ["keep", "user"], ["scout", "builtin"]]);
+  } finally { s.done(); }
+});
+
 test("symlinked directories are followed once", { skip: process.platform === "win32" }, () => {
   const s = sandbox();
   try {

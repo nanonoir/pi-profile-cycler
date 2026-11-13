@@ -1,11 +1,11 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { basename, delimiter, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 // Read-only mirror of pi-subagents 0.87.0 agent discovery (src/agents/agents.js, frontmatter.js, identity.js, agent-selection.js).
-// Not mirrored: package-provided agents, `agentOverrides`/`agentExcludeDirs`/`projectRootResolution` settings, disabled agents.
+// Not mirrored: package-provided agents, `agentOverrides`/`projectRootResolution` settings, disabled agents.
 export interface DiscoveredRole {
   /** Runtime name (`<package>.<name>` when the file declares `package`), the canonical name pi-subagents resolves. */
   name: string;
@@ -121,7 +121,7 @@ function legacySkill(root: string, file: string): boolean {
 }
 
 /** agents.js:1728 `inspectAgentDefinitionDirectory`: recursive `.md` scan (not `.chain.md`), symlinked dirs followed once, entries sorted by name. */
-function scan(root: string, source: DiscoveredRole["source"], found: Discovery): DiscoveredRole[] {
+function scan(root: string, source: DiscoveredRole["source"], found: Discovery, excluded: (path: string) => boolean): DiscoveredRole[] {
   const roles: DiscoveredRole[] = [];
   const visited = new Set<string>();
   const visit = (dir: string): void => {
@@ -137,6 +137,7 @@ function scan(root: string, source: DiscoveredRole["source"], found: Discovery):
     visited.add(real);
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const path = join(dir, entry.name);
+      if (excluded(path)) continue;
       const directory = entry.isDirectory() || (entry.isSymbolicLink() && isDirectory(path));
       if (directory) { if (!pruned(root, path, entry.name)) visit(path); continue; }
       if (!(entry.isFile() || entry.isSymbolicLink()) || !entry.name.endsWith(".md") || entry.name.endsWith(".chain.md") || legacySkill(root, path)) continue;
@@ -145,7 +146,7 @@ function scan(root: string, source: DiscoveredRole["source"], found: Discovery):
       else if (role) roles.push(role);
     }
   };
-  if (isDirectory(root)) visit(root);
+  if (!excluded(root) && isDirectory(root)) visit(root);
   return roles;
 }
 
@@ -159,20 +160,47 @@ function projectRoot(cwd: string, home: string): string | undefined {
   }
 }
 
-/** agents.js:2230 `readConfiguredAgentScanDirs` + `expandAgentScanDirPattern` (agents.js:2252): literal dirs and one `*` path segment. */
-function scanDirs(settingsPath: string, home: string): string[] {
+/** agents.js:2247 `readConfiguredAgentScanDirs`: a `subagents` string list from a settings file, `[]` when absent or unreadable. */
+function settingsList(settingsPath: string, key: "agentScanDirs" | "agentExcludeDirs"): string[] {
   let entries: unknown;
-  try { entries = (JSON.parse(readFileSync(settingsPath, "utf-8")) as { subagents?: { agentScanDirs?: unknown } }).subagents?.agentScanDirs; } catch { return []; }
-  if (!Array.isArray(entries)) return [];
-  return entries.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "").flatMap(entry => {
-    const expanded = entry.trim().replace(/^~(?=$|[\\/])/, home).replace(/[\\/]+/g, sep);
+  try { entries = (JSON.parse(readFileSync(settingsPath, "utf-8")) as { subagents?: Record<string, unknown> }).subagents?.[key]; } catch { return []; }
+  return Array.isArray(entries) ? entries.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "") : [];
+}
+const expandHome = (entry: string, home: string) => entry.trim().replace(/^~(?=$|[\\/])/, home).replace(/[\\/]+/g, sep);
+
+/** agents.js:2264 `canonicalAgentPath`: the real path of the nearest existing ancestor, so missing descendants of symlinks still compare. */
+function canonical(path: string): string {
+  const resolved = resolve(path);
+  try { return realpathSync(resolved); }
+  catch { const parent = dirname(resolved); return parent === resolved ? resolved : join(canonical(parent), basename(resolved)); }
+}
+/** agents.js:2343 `isPathWithin`. */
+function within(root: string, candidate: string): boolean {
+  const rel = relative(resolve(root), resolve(candidate));
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/** agents.js:2276 `agentExclusionRoots` + `agentExclusions`: `agentExcludeDirs` resolve against their settings dir; a path is excluded when it, or its real path, lies inside one. */
+function exclusions(settingsPaths: string[], home: string): (path: string) => boolean {
+  const roots = settingsPaths.flatMap(settingsPath => settingsList(settingsPath, "agentExcludeDirs").map(entry => {
+    const resolved = resolve(dirname(settingsPath), expandHome(entry, home));
+    return { resolved, real: canonical(resolved) };
+  }));
+  return path => roots.length > 0 && (roots.some(root => within(root.resolved, path)) || roots.some(root => within(root.real, canonical(path))));
+}
+
+/** agents.js:2293 `expandAgentScanDirPattern`: literal dirs and one `*` path segment, minus excluded dirs. */
+function scanDirs(settingsPath: string, home: string, excluded: (path: string) => boolean): string[] {
+  return settingsList(settingsPath, "agentScanDirs").flatMap(entry => {
+    const expanded = expandHome(entry, home);
     const parts = expanded.split(sep);
     const star = parts.findIndex(part => part.includes("*"));
-    if (star === -1) return existsSync(resolve(expanded)) ? [resolve(expanded)] : [];
+    if (star === -1) return !excluded(resolve(expanded)) && existsSync(resolve(expanded)) ? [resolve(expanded)] : [];
     if (parts.filter(part => part.includes("*")).length !== 1 || parts[star] !== "*") return [];
     const base = resolve(parts.slice(0, star).join(sep) || sep);
+    if (excluded(base)) return [];
     try {
-      return readdirSync(base, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => join(base, entry.name, ...parts.slice(star + 1))).filter(existsSync);
+      return readdirSync(base, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => join(base, entry.name, ...parts.slice(star + 1))).filter(dir => !excluded(dir) && existsSync(dir));
     } catch { return []; }
   });
 }
@@ -197,17 +225,21 @@ export function discoverRoles(cwd: string, trusted: boolean, agentDir = getAgent
   const env = options.env ?? process.env;
   const found: Discovery = { roles: [], diagnostics: [] };
   const root = trusted ? projectRoot(cwd, home) : undefined;
+  const userSettings = join(agentDir, "settings.json");
+  const projectSettings = root ? join(root, ".pi", "settings.json") : undefined;
+  const excluded = exclusions([userSettings, ...(projectSettings ? [projectSettings] : [])], home);
   const userDirs = [
     ...(env.PI_SUBAGENT_EXTRA_AGENT_DIRS ?? "").split(delimiter).map(dir => dir.trim()).filter(Boolean),
-    ...scanDirs(join(agentDir, "settings.json"), home),
+    ...scanDirs(userSettings, home, excluded),
     join(agentDir, "agents"), join(home, ".agents"),
   ].map(dir => resolve(dir));
-  const projectDirs = root ? [...scanDirs(join(root, ".pi", "settings.json"), home), join(root, ".agents"), join(root, ".pi", "agents")].map(dir => resolve(dir)).filter(dir => !userDirs.includes(dir)) : [];
+  const projectDirs = root && projectSettings ? [...scanDirs(projectSettings, home, excluded), join(root, ".agents"), join(root, ".pi", "agents")].map(dir => resolve(dir)).filter(dir => !userDirs.includes(dir)) : [];
   const builtin = options.builtinDir ?? builtinAgentsDir(agentDir);
   if (!builtin || !isDirectory(builtin)) found.builtinMissing = true;
   const merged = new Map<string, DiscoveredRole>();
-  for (const [source, dirs] of [["builtin", builtin ? [builtin] : []], ["user", userDirs], ["project", projectDirs]] as const) {
-    for (const dir of dirs) for (const role of scan(dir, source, found)) merged.set(role.name, role);
+  // Exclusions never apply to builtin agents (agents.js:2738).
+  for (const [source, dirs, skip] of [["builtin", builtin ? [builtin] : [], () => false], ["user", userDirs, excluded], ["project", projectDirs, excluded]] as const) {
+    for (const dir of dirs) for (const role of scan(dir, source, found, skip)) merged.set(role.name, role);
   }
   found.roles = [...merged.values()].sort((a, b) => RANK[a.source] - RANK[b.source] || a.name.localeCompare(b.name));
   return found;
